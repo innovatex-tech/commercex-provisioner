@@ -113,8 +113,8 @@ go build -o bin/innovatex cmd/innovatex/main.go
 ### **3. Verify Installation**
 
 ```bash
-./bin/innovatex --version
-./bin/innovatex --help
+./bin/innovatex --version    # Should output: innovatex version 1.0.0
+./bin/innovatex --help       # Display available commands
 ```
 
 ---

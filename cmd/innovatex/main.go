@@ -10,6 +10,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const Version = "1.0.0"
+
 var config = &core.Config{
 	WorkDir:        "./data/clients",
 	TemplateDir:    "./templates",
@@ -24,8 +26,9 @@ var config = &core.Config{
 
 func main() {
 	rootCmd := &cobra.Command{
-		Use:   "innovatex",
-		Short: "InnovateX multi-client e-commerce provisioner",
+		Use:     "innovatex",
+		Short:   "InnovateX multi-client e-commerce provisioner",
+		Version: Version,
 	}
 
 	rootCmd.AddCommand(createCmd())
