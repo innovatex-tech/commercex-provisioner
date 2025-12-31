@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/innovatex/provisioner/internal/core"
-	"github.com/innovatex/provisioner/internal/db"
-	"github.com/innovatex/provisioner/internal/registry"
+	"github.com/innovatex-tech/commercex-provisioner/internal/core"
+	"github.com/innovatex-tech/commercex-provisioner/internal/db"
+	"github.com/innovatex-tech/commercex-provisioner/internal/registry"
 	"github.com/spf13/cobra"
 )
 

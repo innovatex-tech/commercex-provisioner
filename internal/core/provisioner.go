@@ -7,11 +7,11 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/innovatex/provisioner/internal/db"
-	"github.com/innovatex/provisioner/internal/deploy"
-	"github.com/innovatex/provisioner/internal/registry"
-	"github.com/innovatex/provisioner/internal/secrets"
-	"github.com/innovatex/provisioner/internal/templates"
+	"github.com/innovatex-tech/commercex-provisioner/internal/db"
+	"github.com/innovatex-tech/commercex-provisioner/internal/deploy"
+	"github.com/innovatex-tech/commercex-provisioner/internal/registry"
+	"github.com/innovatex-tech/commercex-provisioner/internal/secrets"
+	"github.com/innovatex-tech/commercex-provisioner/internal/templates"
 )
 
 type CreateRequest struct {
