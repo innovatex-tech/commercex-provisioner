@@ -97,24 +97,36 @@ Client Environment:
 
 ## 🔧 Installation
 
-### **1. Clone the Repository**
+### **Option 1: Global Install (Recommended)**
+
+The simplest way—one command, no cloning needed:
+
+```bash
+go install github.com/innovatex-tech/commercex-provisioner/cmd/innovatex@latest
+```
+
+This installs `innovatex` globally to `$GOPATH/bin` (usually `~/go/bin`).
+
+Verify installation:
+```bash
+innovatex --version    # Should output: innovatex version 1.0.0
+innovatex --help       # Display available commands
+```
+
+**Troubleshooting**: If `innovatex` command not found, add Go bin to PATH:
+```bash
+export PATH=$PATH:$(go env GOPATH)/bin
+```
+
+### **Option 2: Clone and Build**
+
+For development or customization:
 
 ```bash
 git clone https://github.com/innovatex-tech/commercex-provisioner.git
 cd commercex-provisioner
-```
-
-### **2. Build the Binary**
-
-```bash
 go build -o bin/innovatex cmd/innovatex/main.go
-```
-
-### **3. Verify Installation**
-
-```bash
-./bin/innovatex --version    # Should output: innovatex version 1.0.0
-./bin/innovatex --help       # Display available commands
+./bin/innovatex --version
 ```
 
 ---
@@ -124,7 +136,7 @@ go build -o bin/innovatex cmd/innovatex/main.go
 ### **Deploy Your First Commerce Environment**
 
 ```bash
-./bin/innovatex create \
+innovatex create \
   --id=mystore \
   --domain=mystore.local \
   --brand="My Store" \
@@ -159,7 +171,7 @@ http://vendure:3000/shop-api
 ### **Create a New Commerce Client**
 
 ```bash
-./bin/innovatex create \
+innovatex create \
   --id=store-name \
   --domain=store-name.local \
   --brand="Store Display Name" \
@@ -189,7 +201,7 @@ Storefront: http://localhost:8001
 ### **List All Clients**
 
 ```bash
-./bin/innovatex list
+innovatex list
 ```
 
 Displays all provisioned clients with status, ports, and domains.
@@ -197,7 +209,7 @@ Displays all provisioned clients with status, ports, and domains.
 ### **Check Client Status**
 
 ```bash
-./bin/innovatex status --id=store-name
+innovatex status --id=store-name
 ```
 
 Shows container health, service status, and deployment information.
@@ -205,7 +217,7 @@ Shows container health, service status, and deployment information.
 ### **Delete a Client**
 
 ```bash
-./bin/innovatex delete --id=store-name
+innovatex delete --id=store-name
 ```
 
 Removes all containers, networks, and databases. Database data is preserved for recovery if needed.
@@ -309,7 +321,7 @@ Deploy multiple isolated stores in sequence:
 
 ```bash
 for i in {1..5}; do
-  ./bin/innovatex create \
+  innovatex create \
     --id=store-$i \
     --domain=store-$i.local \
     --brand="Store $i" \
@@ -317,7 +329,7 @@ for i in {1..5}; do
 done
 
 # Verify all deployments
-./bin/innovatex list
+innovatex list
 ```
 
 Each deployment automatically allocates unique ports and databases.
@@ -379,7 +391,7 @@ docker-compose -f data/clients/{clientID}/docker-compose.yml down
 docker system prune -f
 
 # Re-provision
-./bin/innovatex create --id={clientID} ...
+innovatex create --id={clientID} ...
 ```
 
 **Backup database before deletion:**
