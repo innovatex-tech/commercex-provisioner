@@ -97,7 +97,7 @@ Client Environment:
 
 ## 🔧 Installation
 
-### **Option 1: Global Install (Recommended)**
+### 🚀 **Recommended: Global Install**
 
 The simplest way—one command, no cloning needed:
 
@@ -105,7 +105,7 @@ The simplest way—one command, no cloning needed:
 go install github.com/innovatex-tech/commercex-provisioner/cmd/innovatex@latest
 ```
 
-This installs `innovatex` globally to `$GOPATH/bin` (usually `~/go/bin`).
+This puts `innovatex` in your Go bin directory (usually `~/go/bin`).
 
 Verify installation:
 ```bash
@@ -113,12 +113,12 @@ innovatex --version    # Should output: innovatex version 1.0.0
 innovatex --help       # Display available commands
 ```
 
-**Troubleshooting**: If `innovatex` command not found, add Go bin to PATH:
+**If you see 'command not found', add Go bin to your PATH:**
 ```bash
 export PATH=$PATH:$(go env GOPATH)/bin
 ```
 
-### **Option 2: Clone and Build**
+### Option 2: Clone and Build (for development)
 
 For development or customization:
 

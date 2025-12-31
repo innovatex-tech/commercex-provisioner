@@ -294,47 +294,11 @@ Dynamically set during provisioning in `docker-compose.yml`:
 3. Check logs: `docker logs vendure_{clientID}` or `docker logs storefront_{clientID}`
 4. Access storefront: `curl http://localhost:{StorefrontPort}`
 
-### **Common Issues & Solutions**
-- **Port Conflicts**: Advanced `getNextPort()` algorithm prevents collisions across unlimited clients
-- **Build Optimization**: Multi-stage Docker builds with nginx serving eliminate Node.js runtime issues
-- **Database Connectivity**: Health check orchestration ensures PostgreSQL readiness before dependent services
-- **Template Validation**: Comprehensive template data validation prevents deployment failures
-- **Storefront Runtime**: Nginx multi-stage builds ensure proper production serving without npm runtime dependencies
-- **Container Orchestration**: Health-based dependency management prevents premature service startup
-
-## Platform Status & Production Readiness
-
-### **✅ Successfully Implemented & Tested**
-1. **Multi-Stage Docker Builds**: Vite/React apps compile and serve via nginx in production containers
-2. **Health Check Orchestration**: PostgreSQL health checks ensure proper service startup sequencing 
-3. **Dynamic Port Management**: Template variables `{{.VendurePort}}` correctly mapped in docker-compose generation
-4. **CLI Command Interface**: All commands (create, list, delete, status) working with proper flag handling (`--id`)
-5. **Container Isolation**: Complete network, database, and container separation per client
-6. **Template Rendering**: Go text/template system generates client-specific configurations
-7. **Secret Generation**: Cryptographically secure passwords and session secrets per client
-8. **Registry Management**: JSON-based client state tracking and conflict prevention
-9. **Storefront Deployment**: React/Vite applications build successfully and serve via nginx
-10. **Container Health**: PostgreSQL containers start healthy and maintain persistent storage
-
-### **⚠️ Known Limitations**
-- **Vendure Schema Initialization**: TypeORM `synchronize: true` may require manual intervention for initial schema creation in containerized environments
-- **Database Migration Timing**: Some Vendure deployments need explicit schema generation before first startup
-
-### **🔧 Production Deployment Verification**
-```bash
-# Verify complete client provisioning
-./bin/innovatex create --id=demo --domain=demo.local --brand="Demo Store" --email=admin@demo.com
-
-# Test storefront accessibility
-curl -I http://localhost:8001  # Should return 200 OK from nginx
-
-# Verify container orchestration
-docker ps | grep demo  # Should show postgres, vendure, storefront containers
-
-# Check service health
-docker logs storefront_demo  # Should show nginx startup messages
-docker logs postgres_demo    # Should show PostgreSQL ready
-```
+### Common Issues
+- **Port conflicts**: Review `getNextPort()` logic if ports collide
+- **Docker build failures**: Check `storefront/Dockerfile` generation in `createStorefrontDockerfile()`
+- **DB connection**: Verify PostgreSQL service is running and credentials match config
+- **Template rendering**: Ensure template file path is correct and data keys match `{{.FieldName}}`
 
 ## When Modifying This Codebase
 
