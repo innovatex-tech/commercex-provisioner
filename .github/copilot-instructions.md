@@ -2,313 +2,269 @@
 
 ## Project Overview
 
-**InnovateX Provisioner** is a revolutionary multi-client e-commerce provisioning platform that automatically creates fully isolated, production-ready commerce environments. This enterprise-grade system provisions complete Vendure commerce instances with React/Vite storefronts, delivering true multi-tenancy through containerized infrastructure isolation.
+**InnovateX Provisioner** is a multi-client e-commerce provisioning platform that automatically creates fully isolated, production-ready commerce environments. This system provisions complete CommerceX instances with React/Vite storefronts, delivering true multi-tenancy through containerized infrastructure isolation.
 
-## Platform Innovations & Accomplishments
+**Tech Stack**: Go 1.25+, Docker Compose, PostgreSQL 16, CommerceX (Node.js commerce engine), React/Vite storefronts, Nginx reverse proxy
 
-### 🚀 **InnovateX Shop Platform - Key Innovations**
+## Core Architecture
 
-#### **Multi-Tenant Commerce Architecture**
-- **Complete Infrastructure Isolation**: Each client receives dedicated PostgreSQL databases, Docker networks, and container stacks
-- **Dynamic Port Allocation**: Intelligent port management system prevents conflicts across unlimited client deployments
-- **Zero-Dependency Client Separation**: Clients cannot interfere with each other's data, performance, or availability
+### **Multi-Tenant Isolation Strategy**
+- **Complete Infrastructure Isolation**: Each client receives dedicated PostgreSQL database, Docker network, and 4-container stack
+- **Dynamic Port Allocation**: 3 sequential ports per client (`BasePort + clientIndex*3`): app, postgres, storefront
+- **Service Stack**: `commercex-server` (main app), `commercex-worker` (background jobs), `postgres_db`, `storefront` (React/Vite)
+- **Container Naming**: `{service}_{clientID}` pattern (e.g., `commercex_server_demo-store`)
+- **Network Isolation**: Each client has dedicated bridge network (`{clientID}_network`)
 
-#### **Advanced Production Deployment Pipeline**
-- **Multi-Stage Docker Builds**: Optimized production builds with nginx serving for maximum performance
-- **Container Health Orchestration**: PostgreSQL health checks ensure proper service startup sequencing
-- **Template-Driven Configuration**: Dynamic environment and infrastructure generation per client
-- **Automated Secret Management**: Cryptographically secure password and session secret generation
+### **Deployment Pipeline**
+- **Template Rendering**: Go `text/template` generates `.env`, `docker-compose.yml`, `nginx.conf` per client
+- **Health Orchestration**: PostgreSQL health checks ensure database readiness before app startup
+- **Storefront Provisioning**: Git clone from `StorefrontRepo` + generated multi-stage Dockerfile (node build → nginx serve)
+- **Security**: Cryptographically secure secrets via `crypto/rand` (32-byte cookie secrets, configurable admin passwords)
 
-#### **Enterprise-Grade Storefront Technology**
-- **Modern React/Vite Stack**: High-performance frontend with hot module replacement and optimized builds
-- **Component Library Integration**: Shadcn/ui (Radix UI) for consistent, accessible design systems
-- **GraphQL-First API Integration**: Seamless Vendure Shop API integration with type safety
-- **Production-Ready Serving**: Nginx-based static asset serving with proper caching headers
+### **Environment Configuration**
+The system uses configurable paths (defaults to `~/.innovatex/`, override with env vars):
+- `INNOVATEX_WORK_DIR`: Client deployment directories (default: `~/.innovatex/clients/`)
+- `INNOVATEX_TEMPLATE_DIR`: Template files location (default: `~/.innovatex/templates/`)
+- `INNOVATEX_REGISTRY`: Client registry JSON path (default: `~/.innovatex/registry.json`)
 
-### 🏗️ **Technical Architecture Breakthroughs**
+**Template Bootstrapping**: On first run, `ensureTemplates()` in [cmd/innovatex/main.go](cmd/innovatex/main.go) writes embedded templates to template dir if missing.
 
-#### **Intelligent Provisioning Engine**
-- **One-Command Deployment**: Single CLI command provisions complete commerce infrastructure
-- **Template Rendering System**: Go text/template system dynamically generates Docker Compose and environment configurations
-- **Registry-Based State Management**: JSON-based client registry for deployment tracking and management
-- **Error-Resilient Workflows**: Comprehensive validation and rollback capabilities
-
-#### **Container Orchestration Mastery**
-- **Service Discovery Networks**: Internal Docker networks enable secure service-to-service communication
-- **Persistent Data Management**: Named volume strategies for database persistence across container lifecycles
-- **Build Cache Optimization**: Layered Docker builds with intelligent caching for rapid deployments
-- **Health Check Integration**: Container dependency management with health-based startup sequencing
-
-### 💡 **Development Experience Innovations**
-
-#### **Developer-Friendly CLI Interface**
-- **Cobra-Powered Commands**: Professional CLI with create, list, status, and delete operations
-- **Progress Feedback**: Real-time deployment progress with visual checkmarks and error reporting
-- **Flexible Configuration**: Command-line flag support for all client parameters
-- **Registry Integration**: Persistent client state management and conflict prevention
-
-#### **Debugging & Maintenance Tools**
-- **Container Log Aggregation**: Direct access to individual service logs per client
-- **Health Status Monitoring**: Real-time container and service status checking
-- **Port Conflict Resolution**: Automatic port allocation with collision avoidance
-- **Template Validation**: Built-in template rendering verification
-
-## Core Architecture Pattern
+### **CLI Interface (Cobra-based)**
+- **Interactive Prompts**: All flags optional - CLI prompts for missing values with validation
+- **Commands**: `create`, `list`, `delete`, `status` (see [cmd/innovatex/main.go](cmd/innovatex/main.go))
+- **Progress Feedback**: ✓ checkmarks for each provisioning step
+- **Input Validation**: Regex validation for clientID (`^[a-z0-9-]+$`), domain, brand name
 
 ### **System Components**
-- **Provisioner** ([internal/core/provisioner.go](internal/core/provisioner.go)) - Orchestrates complete client lifecycle workflows
-- **Registry** ([internal/registry/](internal/registry/)) - Maintains persistent client metadata and state
-- **Database Layer** ([internal/db/](internal/db/)) - Manages per-client PostgreSQL provisioning
-- **Docker Deployer** ([internal/deploy/docker.go](internal/deploy/docker.go)) - Handles container orchestration lifecycle
-- **Template Engine** ([internal/templates/](internal/templates/)) - Dynamic configuration generation system
-- **Secrets Generator** ([internal/secrets/](internal/secrets/)) - Cryptographic password and token generation
-
-### **Revolutionary Client Creation Flow**
-1. **Input Validation**: CLI ([cmd/innovatex/main.go](cmd/innovatex/main.go)) accepts and validates: `clientID`, `domain`, `brandName`, `adminEmail`
-2. **Security Generation**: Provisioner generates cryptographically secure secrets (16-char admin passwords, 32-byte random cookie secrets)
-3. **Infrastructure Allocation**: Assigns sequential ports using algorithm: `BasePort + 2*clientIndex` for Vendure, `+1` for Storefront
-4. **Storefront Provisioning**: Clones production-ready React/Vite template from `StorefrontRepo` into isolated client directory
-5. **Configuration Generation**: Renders dynamic `docker-compose.yml` & `vendure.env` from Go templates with client-specific data
-6. **Container Deployment**: Executes `docker-compose up -d --build` with health check orchestration
-7. **Registry Registration**: Persists client metadata in `data/registry.json` for ongoing management
-
-## Key Developer Workflows
-
-### **Building & Deployment**
-```bash
-# Build the provisioner binary
-go build -o bin/innovatex cmd/innovatex/main.go
-
-# Deploy a new client (complete commerce infrastructure in one command)
-./bin/innovatex create --id=client1 --domain=client1.local --brand="Client Store" --email=admin@client1.com
+```
+internal/
+├── core/provisioner.go       # Orchestrates 11-step Create() workflow, Delete() cleanup
+├── registry/store.go         # JSON persistence (Save, List, Get, Delete)
+├── deploy/docker.go          # Wraps docker-compose commands (Deploy, Stop, Remove)
+├── templates/renderer.go     # text/template.Execute() wrapper
+├── secrets/generator.go      # crypto/rand-based secret generation
+└── db/provisioner.go         # Database provisioning logic (currently unused)
 ```
 
-### **Management Operations**
-- **Create**: `./bin/innovatex create --id=store1 --domain=store1.local --brand="Store One" --email=admin@store1.com`
-- **List All Clients**: `./bin/innovatex list` (displays all provisioned clients from registry)
-- **Client Status**: `./bin/innovatex status --id=store1` (health and container status)
-- **Cleanup**: `./bin/innovatex delete --id=store1` (complete infrastructure teardown with data preservation option)
+### **Client Creation Flow** (11 Steps in `Provisioner.Create()`)
+1. **Validation**: Check clientID uniqueness in registry
+2. **Secret Generation**: `secrets.GenerateSecret()` → 32-byte base64 cookie secret
+3. **Port Allocation**: `getNextPort()` → `BasePort + (len(clients) * 3)` (3 ports per client)
+4. **Directory Setup**: Create `{WorkDir}/{clientID}/`
+5. **Storefront Clone**: Git clone from `config.StorefrontRepo`
+6. **Dockerfile Generation**: Write multi-stage Dockerfile to `storefront/Dockerfile`
+7. **Template Data Prep**: Build `templateData` map with all `{{.Variables}}`
+8. **Render `.env`**: Template → `{clientDir}/.env`
+9. **Render `nginx.conf`**: Template → `{clientDir}/nginx.conf`
+10. **Render `docker-compose.yml`**: Template → `{clientDir}/docker-compose.yml`
+11. **Deploy**: `docker-compose up -d --build` via `deployer.Deploy()`
+12. **Registry Save**: Persist `Client` struct to JSON registry
 
-### **Configuration & Security**
-- **Database Credentials**: Centralized PostgreSQL credentials in config with per-client database isolation
-- **Per-Client Secrets**: Unique admin passwords (16-character complexity), cryptographic cookie secrets (32-byte entropy)
-- **Port Management**: Intelligent allocation system in `getNextPort()` with collision prevention
+## Developer Workflows
+
+### **Build & Run**
+```bash
+# Build binary
+go build -o bin/innovatex cmd/innovatex/main.go
+
+# Create client (flags optional - will prompt if missing)
+./bin/innovatex create --id=demo --domain=demo.local --brand="Demo Store" \
+  --db-name=demo_db --db-username=demouser --db-password=pass123 \
+  --admin-username=admin --admin-password=admin123
+
+# Or use interactive mode (all prompts)
+./bin/innovatex create
+
+# List all clients
+./bin/innovatex list
+
+# Check client status
+./bin/innovatex status --id=demo
+
+# Delete client (keeps DB, removes containers/files)
+./bin/innovatex delete --id=demo
+```
+
+### **Configuration Values** ([cmd/innovatex/main.go](cmd/innovatex/main.go#L237-L245))
+```go
+config := &core.Config{
+  WorkDir:        "~/.innovatex/clients/",  // or $INNOVATEX_WORK_DIR
+  TemplateDir:    "~/.innovatex/templates/", // or $INNOVATEX_TEMPLATE_DIR
+  StorefrontRepo: "https://github.com/The-Coding-Kiddo/clothing-storefront.git",
+  BasePort:       8000,  // Clients get 8000-8002, 8003-8005, etc.
+}
+```
 
 ## Project-Specific Patterns
 
-### **Multi-Client Isolation Strategy**
-Revolutionary approach to true multi-tenancy:
-- **Network Isolation**: Separate Docker network per client: `{clientID}_network`
-- **Database Separation**: Unique PostgreSQL database: `vendure_{clientID}`
-- **Container Isolation**: Dedicated container names: `postgres_{clientID}`, `vendure_{clientID}`, `storefront_{clientID}`
-- **Port Independence**: Dynamic port allocation eliminates conflicts across unlimited clients
+### **Template Rendering System**
+All templates use Go `text/template` syntax ([templates/](templates/)):
+```go
+// In provisioner.Create(), build templateData map:
+templateData := map[string]interface{}{
+  "ClientID":       req.ClientID,
+  "AppPort":        appPort,        // e.g., 8000
+  "PostgresPort":   postgresPort,   // e.g., 8001
+  "StorefrontPort": storefrontPort, // e.g., 8002
+  "DBName":         req.DBName,
+  "DBUsername":     req.DBUsername,
+  "DBPassword":     req.DBPassword,
+  "AdminUsername":  req.AdminUsername,
+  "AdminPassword":  req.AdminPassword,
+  "CookieSecret":   cookieSecret,
+  "GeneratedAt":    time.Now().Format(time.RFC3339),
+}
 
-### **Template-Driven Infrastructure**
-Advanced configuration management:
-- **Go Template Integration**: Files in `templates/` use `text/template` syntax for dynamic generation
-- **Variable Injection**: `{{.ClientID}}`, `{{.DBName}}`, `{{.VendurePort}}` injected during provisioning
-- **Environment Generation**: Client-specific environment variables and Docker Compose services
-- **Render Pipeline**: Templates rendered to `data/clients/{clientID}/` during deployment workflow
+// Render each template to client directory
+renderer.Render(".env.tmpl", templateData, "{clientDir}/.env")
+renderer.Render("nginx.conf.tmpl", templateData, "{clientDir}/nginx.conf")
+renderer.Render("docker-compose.yml.tmpl", templateData, "{clientDir}/docker-compose.yml")
+```
 
-### **Container Orchestration Excellence**
-Production-ready Docker architecture:
-- **Three-Service Stack**: PostgreSQL (data), Vendure (commerce engine), Storefront (React/Vite frontend)
-- **Persistent Storage**: Named volumes for database persistence across container lifecycles
-- **Service Discovery**: Internal Docker networks enable secure `vendure` hostname resolution
-- **Multi-Stage Builds**: Optimized production builds with nginx serving layer
+**Template Variable Usage**: `{{.ClientID}}`, `{{.AppPort}}`, `{{.DBName}}`, etc. are injected during rendering.
 
-### **Registry Storage Innovation**
-File-based state management system:
+### **Docker Compose Stack** ([templates/docker-compose.yml.tmpl](templates/docker-compose.yml.tmpl))
+4 services per client:
+1. **`commercex-server`**: Main app (`abduazizali/commercex:latest`), port `{{.AppPort}}:3000`
+2. **`commercex-worker`**: Background worker (same image, different entrypoint: `dist/index-worker.js`)
+3. **`postgres_db`**: PostgreSQL 16-alpine, port `{{.PostgresPort}}:5432`, health checks
+4. **`storefront`**: React/Vite build → nginx, port `{{.StorefrontPort}}:80`
+
+**Volumes**: `postgres_data_{{.ClientID}}`, `commercex_static_{{.ClientID}}`  
+**Network**: `{{.ClientID}}_network` (bridge driver)
+
+### **Registry Pattern** ([internal/registry/store.go](internal/registry/store.go))
+JSON file-based persistence:
 ```go
 type Client struct {
-  ID, Domain, BrandName, Status, DBName, AdminEmail, AdminPassword, CookieSecret
-  VendurePort, StorefrontPort int
-  CreatedAt time.Time
+  ID, Domain, BrandName, Status, DBName, DBUsername, DBPassword string
+  AdminUsername, AdminPassword, CookieSecret                    string
+  AppPort, PostgresPort, StorefrontPort                         int
+  CreatedAt                                                     time.Time
 }
 ```
-Enables status monitoring, conflict prevention, and deployment history tracking.
 
-## Storefront Technology Stack
+**Operations**: `Save()` (upsert), `List()`, `Get(id)`, `Delete(id)`  
+**Usage**: Prevents duplicate clientIDs, tracks port allocations, enables `list` command
 
-### **Modern Frontend Architecture**
-- **Framework**: React 18+ with Vite 5.x for lightning-fast development and builds
-- **UI Library**: Shadcn/ui (Radix UI components) for professional, accessible design systems
-- **Styling**: Tailwind CSS with PostCSS for utility-first responsive design
-- **Forms**: React Hook Form + Zod validation for type-safe form handling
-- **GraphQL Integration**: Vendure Shop API with generated TypeScript types
-- **Production Serving**: Nginx static asset serving with optimized caching
+## Storefront Integration
 
-### **Advanced Environment Configuration**
-Dynamically set during provisioning in `docker-compose.yml`:
-- `VENDURE_SHOP_API_URL=http://vendure:3000/shop-api` (internal service discovery)
-- `VENDURE_CHANNEL_TOKEN=__default_channel__` (API authentication)
-- `NEXT_PUBLIC_SITE_URL=http://localhost:{StorefrontPort}` (dynamic URL generation)
-- `REVALIDATION_SECRET={cookie_secret}` (ISR cache invalidation security)
-- `NEXT_PUBLIC_SITE_NAME={BrandName}` (dynamic brand customization)
+### **React/Vite Stack**
+- **Cloning**: `git clone {StorefrontRepo}` into `{clientDir}/storefront/`
+- **Dockerfile Generation**: Provisioner writes multi-stage Dockerfile ([provisioner.go#L228-L242](internal/core/provisioner.go)):
+  ```dockerfile
+  FROM node:20 AS builder
+  WORKDIR /app
+  COPY package.json ./
+  RUN rm -f package-lock.json && npm install
+  COPY . .
+  RUN npm run build
+  
+  FROM nginx:alpine
+  COPY --from=builder /app/dist /usr/share/nginx/html
+  EXPOSE 80
+  CMD ["nginx", "-g", "daemon off;"]
+  ```
+- **UI Stack**: Shadcn/ui (Radix), Tailwind CSS, React Hook Form, Apollo Client for GraphQL
 
-### **Extensibility & Customization**
-- **Commerce Components**: Modular component library in `src/components/commerce/` for Vendure-specific business logic
-- **Authentication System**: Comprehensive auth context in `src/contexts/auth-context.tsx` for customer session management  
-- **Search Integration**: Advanced search capabilities via Vendure Search API with filtering and faceting
-- **Checkout Flow**: Complete order lifecycle integration with payment processing and fulfillment
+### **CommerceX Commerce Engine**
+- **Container Image**: `abduazizali/commercex:latest` (custom Node.js commerce platform)
+- **Dual Containers**: `commercex-server` (web), `commercex-worker` (background jobs)
+- **Internal API**: Server runs on port 3000 inside container, proxied by nginx
+- **Environment Config**: `.env` file with DB credentials, ports, cookie secrets
+- **Health Dependency**: Services wait for `postgres_db` health check before starting
 
-## Critical Integration Points
+### **Service Discovery**
+- Storefront → CommerceX: Internal hostname `commercex-server:3000` (via Docker network)
+- Nginx reverse proxy: Exposed on `{{.AppPort}}` for external access
+- Database: Hostname `postgres_db` within network, external `localhost:{{.PostgresPort}}`
 
-### **Vendure Commerce Engine**
-Enterprise-grade commerce backend:
-- **Container Image**: `abduazizali/commercex:latest` (production-optimized Vendure distribution)
-- **Admin Interface**: Full-featured admin panel accessible at `localhost:{VendurePort}`
-- **Shop API**: GraphQL Shop API for storefront integration at internal `http://vendure:3000/shop-api`
-- **Database Integration**: Auto-configured PostgreSQL connection via templated `vendure.env`
-- **Health Orchestration**: PostgreSQL health checks ensure database readiness before Vendure startup
+## Code Patterns
 
-### **Production Infrastructure**
-- **Multi-Stage Docker Builds**: Optimized build pipeline with node build stage and nginx serving stage
-- **Container Health Management**: Sophisticated health check system with retry logic and timeout handling
-- **Port Template Variables**: Dynamic port allocation using `{{.VendurePort}}` template substitution
-- **Network Security**: Isolated Docker networks prevent cross-client communication
+### **Provisioner Orchestration** ([internal/core/provisioner.go](internal/core/provisioner.go))
+The `Create()` method is the heart of client provisioning:
+- Returns `(*registry.Client, error)` - either full client record or error
+- Uses `fmt.Println("✓ Step description")` for progress feedback
+- Calls helper methods: `validate()`, `cloneStorefront()`, `createStorefrontDockerfile()`, `getNextPort()`
+- All template rendering happens via `renderer.Render(templateName, data, outputPath)`
+- Final step: `deployer.Deploy(clientID)` wraps `docker-compose up -d --build`
 
-## Code Architecture Excellence
+`Delete()` method cleanup:
+- Stops containers: `deployer.Remove(clientID)` → `docker-compose down -v`
+- Removes directory: `os.RemoveAll(clientDir)`
+- Preserves database (warning printed to user)
+- Updates registry: `registry.Delete(clientID)`
 
-### **Go Module Organization**
-- **Internal Packages**: Business logic isolated in `internal/` directory (registry, db, deploy, core, secrets, templates)
-- **Thin CLI Layer**: `cmd/main.go` delegates to provisioner with minimal logic
-- **Cobra Command Pattern**: Each operation (create, list, delete, status) as separate, focused command functions
-- **Error Handling**: Descriptive error propagation with user-friendly progress indicators
-
-### **Development Best Practices**
-- **Progress Feedback**: Real-time deployment progress with ✓ checkmarks and status updates
-- **Validation Pipeline**: Input validation, resource availability checks, and conflict prevention
-- **Template Safety**: Safe template rendering with error handling and validation
-- **Resource Cleanup**: Proper container and volume cleanup on deletion with data preservation options
-
-## Testing & Production Verification
-
-### **Deployment Verification Workflow**
-1. **Registry Verification**: `grep clientID data/registry.json` - confirm client registration
-2. **Container Status**: `docker ps | grep {clientID}` - verify all services running
-3. **Service Logs**: `docker logs vendure_{clientID}` and `docker logs storefront_{clientID}` - check startup health
-4. **Connectivity Test**: `curl http://localhost:{StorefrontPort}` - verify storefront accessibility
-5. **API Health**: `curl http://localhost:{VendurePort}/health` - confirm Vendure API status
-
-### **Common Issues & Solutions**
-- **Port Conflicts**: Advanced `getNextPort()` algorithm prevents collisions across unlimited clients
-- **Build Optimization**: Multi-stage Docker builds with nginx serving eliminate Node.js runtime issues
-- **Database Connectivity**: Health check orchestration ensures PostgreSQL readiness before dependent services
-- **Template Validation**: Comprehensive template data validation prevents deployment failures
-
-## Platform Evolution & Extensibility
-
-### **Future Expansion Capabilities**
-1. **Multi-Region Deployment**: Template system ready for cloud provider integration
-2. **SSL/TLS Integration**: Nginx configuration extensible for production SSL termination
-3. **Monitoring Integration**: Registry system ready for metrics collection and alerting
-4. **Auto-Scaling**: Container orchestration prepared for Kubernetes deployment
-5. **Backup Automation**: Database volume management ready for automated backup strategies
-
-### **Modification Guidelines**
-1. **Client Lifecycle Enhancement**: Extend `Provisioner.Create()` workflow in [internal/core/provisioner.go](internal/core/provisioner.go)
-2. **Environment Variables**: Add to `templateData` map in provisioner and update template files
-3. **Port Management**: Modify allocation algorithm in `getNextPort()` for custom port strategies
-4. **Command Addition**: Extend Cobra CLI in [cmd/main.go](cmd/main.go) with new provisioner methods
-5. **Infrastructure Changes**: Update templates in [templates/docker-compose.yml.tmpl](templates/docker-compose.yml.tmpl) for new services
-
-## Reference Architecture
-
-### **Key Implementation Files**
-- [internal/core/provisioner.go](internal/core/provisioner.go) - Core orchestration logic and client lifecycle management
-- [cmd/innovatex/main.go](cmd/innovatex/main.go) - CLI interface and command definitions  
-- [templates/docker-compose.yml.tmpl](templates/docker-compose.yml.tmpl) - Container orchestration definitions
-- [internal/registry/store.go](internal/registry/store.go) - Client state persistence and management
-- [internal/deploy/docker.go](internal/deploy/docker.go) - Docker container lifecycle operations
-
-### **Achievement Summary**
-The **InnovateX Provisioner** represents a breakthrough in e-commerce infrastructure automation, delivering enterprise-grade multi-tenant commerce platform provisioning through a single CLI command. This system successfully combines modern containerization, template-driven configuration, and production-ready frontend architecture to enable unlimited isolated commerce environments with zero manual configuration.
-
-### Template Rendering
-Files in `templates/` use Go's `text/template` syntax:
-- `{{.ClientID}}`, `{{.DBName}}`, `{{.VendurePort}}` are injected from provisioner
-- Rendered to `data/clients/{clientID}/` during Create workflow
-- Use case: Environment variables and Docker Compose services require per-client customization
-
-### Docker Compose Orchestration
-- **Three-service stack**: PostgreSQL, Vendure (commercex), Storefront (Next.js)
-- **Mount strategy**: Named volume for DB persistence (`postgres_data`)
-- **Service discovery**: Internal network allows `vendure` hostname in Storefront API calls
-- **Build args**: Storefront service builds from local Dockerfile (created during provision)
-
-### Registry Storage Pattern
-File-based JSON store (`data/registry.json`) tracks:
-```go
-type Client struct {
-  ID, Domain, BrandName, Status, DBName, AdminEmail, AdminPassword, CookieSecret
-  VendurePort, StorefrontPort int
-  CreatedAt time.Time
-}
-```
-Used for status checks, list operations, and preventing duplicate client IDs.
-
-## Storefront Technology Stack
-
-### **Modern Frontend Architecture**
-- **Framework**: React 18+ with Vite 5.x for lightning-fast development and builds
-- **UI Library**: Shadcn/ui (Radix UI components) for professional, accessible design systems
-- **Styling**: Tailwind CSS with PostCSS for utility-first responsive design
-- **Forms**: React Hook Form + Zod validation for type-safe form handling
-- **GraphQL Integration**: Vendure Shop API with generated TypeScript types
-- **Production Serving**: Nginx static asset serving with optimized caching
-
-### **Advanced Environment Configuration**
-Dynamically set during provisioning in `docker-compose.yml`:
-- `VENDURE_SHOP_API_URL=http://vendure:3000/shop-api` (internal service discovery)
-- `VENDURE_CHANNEL_TOKEN=__default_channel__` (API authentication)
-- `NEXT_PUBLIC_SITE_URL=http://localhost:{StorefrontPort}` (dynamic URL generation)
-- `REVALIDATION_SECRET={cookie_secret}` (ISR cache invalidation security)
-- `NEXT_PUBLIC_SITE_NAME={BrandName}` (dynamic brand customization)
-
-### **Extensibility & Customization**
-- **Commerce Components**: Modular component library in `src/components/commerce/` for Vendure-specific business logic
-- **Authentication System**: Comprehensive auth context in `src/contexts/auth-context.tsx` for customer session management  
-- **Search Integration**: Advanced search capabilities via Vendure Search API with filtering and faceting
-- **Checkout Flow**: Complete order lifecycle integration with payment processing and fulfillment
-
-## Critical Integration Points
-
-### Vendure Commerce Engine
-- **Container**: `abduazizali/commercex:latest` (pre-built Vendure instance)
-- **Admin API**: Accessible from host at `localhost:{VendurePort}`
-- **Shop API**: Internal endpoint for Storefront (`http://vendure:3000/shop-api`)
-- **Database**: PostgreSQL connection string auto-injected via `vendure.env` template
-
-### Code Structure Rules
-- **Go modules**: Place business logic in `internal/` packages (registry, db, deploy, core, secrets, templates)
-- **CLI Layer**: Keep `cmd/main.go` thin—delegate to provisioner
-- **Cobra Commands**: Each operation (create, list, delete, status) is a separate command function
-- **Error Propagation**: Return descriptive errors early; provisioner logs progress with ✓ checkmarks
+### **CLI Structure** ([cmd/innovatex/main.go](cmd/innovatex/main.go))
+- **Main function**: Calls `ensureTemplates()`, builds Cobra rootCmd, adds subcommands
+- **Config initialization** (line 237): `config := &core.Config{...}` with hardcoded defaults
+- **Interactive prompts**: `promptInput(scanner, label, validationFunc)` pattern throughout
+- **Validation helpers**: `validateClientID`, `validateDomain`, `validateBrandName` use regex
+- **Template bootstrapping**: `ensureTemplates()` writes `.env.tmpl`, `docker-compose.yml.tmpl`, `nginx.conf.tmpl` if missing
 
 ## Testing & Debugging
 
-### Verify Provisioning Success
-1. Check registry: `grep clientID data/registry.json`
-2. List containers: `docker ps | grep {clientID}`
-3. Check logs: `docker logs vendure_{clientID}` or `docker logs storefront_{clientID}`
-4. Access storefront: `curl http://localhost:{StorefrontPort}`
+### **Verify Provisioning**
+```bash
+# Check registry entry
+cat ~/.innovatex/registry.json | jq '.[] | select(.ID=="demo")'  # or use grep
 
-### Common Issues
-- **Port conflicts**: Review `getNextPort()` logic if ports collide
-- **Docker build failures**: Check `storefront/Dockerfile` generation in `createStorefrontDockerfile()`
-- **DB connection**: Verify PostgreSQL service is running and credentials match config
-- **Template rendering**: Ensure template file path is correct and data keys match `{{.FieldName}}`
+# List running containers
+docker ps | grep demo-store
+# Expected: commercex_server_demo, commercex_worker_demo, postgres_demo, storefront_demo
 
-## When Modifying This Codebase
+# Check logs
+docker logs commercex_server_demo-store -f
+docker logs storefront_demo-store --tail=50
 
-1. **Client lifecycle changes**: Update `Provisioner.Create()` flow in `internal/core/provisioner.go`
-2. **New environment variables**: Add to `templateData` map in provisioner and update `.env.tmpl`
-3. **Port allocation logic**: Modify `getNextPort()` in provisioner.go
-4. **Adding commands**: Extend Cobra CLI in `cmd/main.go` and call provisioner methods
-5. **Infrastructure changes**: Update Docker Compose template in `templates/docker-compose.yml.tmpl`
+# Test connectivity
+curl http://localhost:8002  # storefront (assuming port 8002)
+curl http://localhost:8000  # commercex app (assuming port 8000)
 
-Reference key files:
-- [internal/core/provisioner.go](internal/core/provisioner.go) - Orchestration logic
-- [cmd/innovatex/main.go](cmd/innovatex/main.go) - CLI entry points
-- [templates/docker-compose.yml.tmpl](templates/docker-compose.yml.tmpl) - Container definitions
+# Inspect network
+docker network ls | grep demo-store
+docker network inspect demo-store_network
+```
+
+### **Common Issues**
+- **Port conflicts**: Check `getNextPort()` in [provisioner.go](internal/core/provisioner.go#L214) - formula is `BasePort + (len(clients) * 3)`
+- **Template errors**: Verify template files exist in `~/.innovatex/templates/` (or `$INNOVATEX_TEMPLATE_DIR`)
+- **Git clone fails**: Check network access to `StorefrontRepo` URL in config
+- **DB connection**: Ensure postgres container is healthy before commercex starts (health check in docker-compose)
+- **Docker build**: Multi-stage Dockerfile requires `npm run build` to succeed in storefront
+
+## Modifying the Codebase
+
+### **Adding New Template Variables**
+1. Add field to `templateData` map in [provisioner.go](internal/core/provisioner.go#L110-L123)
+2. Update template file (e.g., `templates/.env.tmpl`) with `{{.NewVariable}}`
+3. Optionally add to `registry.Client` struct if persistence needed
+
+### **Changing Port Allocation**
+Modify `getNextPort()` in [provisioner.go](internal/core/provisioner.go#L214):
+```go
+// Current: 3 ports per client (app, postgres, storefront)
+return p.config.BasePort + (len(clients) * 3)
+
+// Example: 4 ports per client (add nginx proxy)
+return p.config.BasePort + (len(clients) * 4)
+```
+
+### **Adding New CLI Commands**
+1. Create command function in [cmd/innovatex/main.go](cmd/innovatex/main.go): `func statusCmd() *cobra.Command { ... }`
+2. Add to rootCmd: `rootCmd.AddCommand(statusCmd())`
+3. Call provisioner methods within `RunE` handler
+4. Use `promptInput()` for interactive values
+
+### **Extending Docker Services**
+1. Edit [templates/docker-compose.yml.tmpl](templates/docker-compose.yml.tmpl)
+2. Add service definition with `{{.ClientID}}` in names/networks
+3. Update `templateData` if new env vars needed
+4. Adjust port allocation in `getNextPort()` if new ports required
+
+### **Key Files for Common Changes**
+- **Port/network changes**: [internal/core/provisioner.go](internal/core/provisioner.go)
+- **CLI flags/prompts**: [cmd/innovatex/main.go](cmd/innovatex/main.go)
+- **Container stack**: [templates/docker-compose.yml.tmpl](templates/docker-compose.yml.tmpl)
+- **Environment variables**: `templates/.env.tmpl` (embedded in [main.go](cmd/innovatex/main.go))
+- **Registry schema**: [internal/registry/models.go](internal/registry/models.go)

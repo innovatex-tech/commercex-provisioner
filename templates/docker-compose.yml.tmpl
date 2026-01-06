@@ -1,50 +1,78 @@
-version: '3.8'
+# Production Docker Compose - CommerceX Provisioner
+# Client: {{.ClientID}}
 
 services:
-  postgres_db:
-    image: postgres:16-alpine
-    container_name: postgres_{{.ClientID}}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    environment:
-      POSTGRES_DB: {{.DBName}}
-      POSTGRES_USER: vendure
-      POSTGRES_PASSWORD: XTE9YTewFVAY2hvXK9-MUg
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U vendure -d {{.DBName}}"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    networks:
-      - {{.ClientID}}_network
+    # CommerceX Application Server
+    commercex-server:
+        image: ${REGISTRY:-abduazizali}/commercex:${TAG:-latest}
+        container_name: commercex_server_{{.ClientID}}
+        ports:
+            - "{{.AppPort}}:3000"
+        env_file:
+            - .env
+        volumes:
+            - commercex_static_{{.ClientID}}:/app/static
+        depends_on:
+            postgres_db:
+                condition: service_healthy
+        command: ["node", "dist/index.js"]
+        restart: unless-stopped
+        networks:
+            - {{.ClientID}}_network
 
-  vendure:
-    image: abduazizali/commercex:latest
-    container_name: vendure_{{.ClientID}}
-    env_file:
-      - ./vendure.env
-    ports:
-      - "3000:3000"
-    depends_on:
-      postgres_db:
-        condition: service_healthy
-    networks:
-      - {{.ClientID}}_network
+    # CommerceX Background Worker
+    commercex-worker:
+        image: ${REGISTRY:-abduazizali}/commercex:${TAG:-latest}
+        container_name: commercex_worker_{{.ClientID}}
+        env_file:
+            - .env
+        volumes:
+            - commercex_static_{{.ClientID}}:/app/static
+        depends_on:
+            postgres_db:
+                condition: service_healthy
+        command: ["node", "dist/index-worker.js"]
+        restart: unless-stopped
+        networks:
+            - {{.ClientID}}_network
 
-  storefront:
-    build:
-      context: ./storefront
-    container_name: storefront_{{.ClientID}}
-    ports:
-      - "{{.StorefrontPort}}:80"
-    depends_on:
-      - vendure
-    networks:
-      - {{.ClientID}}_network
+    postgres_db:
+        image: postgres:16-alpine
+        container_name: postgres_{{.ClientID}}
+        volumes:
+            - postgres_data_{{.ClientID}}:/var/lib/postgresql/data
+        ports:
+            - "{{.PostgresPort}}:5432"
+        environment:
+            POSTGRES_DB: {{.DBName}}
+            POSTGRES_USER: {{.DBUsername}}
+            POSTGRES_PASSWORD: {{.DBPassword}}
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U {{.DBUsername}}"]
+            interval: 5s
+            timeout: 5s
+            retries: 5
+        networks:
+            - {{.ClientID}}_network
+
+    # Storefront
+    storefront:
+        build:
+            context: ./storefront
+        container_name: storefront_{{.ClientID}}
+        ports:
+            - "{{.StorefrontPort}}:80"
+        depends_on:
+            - commercex-server
+        networks:
+            - {{.ClientID}}_network
 
 volumes:
-  postgres_data:
+    postgres_data_{{.ClientID}}:
+        driver: local
+    commercex_static_{{.ClientID}}:
+        driver: local
 
 networks:
-  {{.ClientID}}_network:
-    driver: bridge
+    {{.ClientID}}_network:
+        driver: bridge

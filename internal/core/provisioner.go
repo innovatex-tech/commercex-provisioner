@@ -15,10 +15,18 @@ import (
 )
 
 type CreateRequest struct {
-	ClientID   string
-	Domain     string
-	BrandName  string
-	AdminEmail string
+	ClientID  string
+	Domain    string
+	BrandName string
+
+	// Database (user provides)
+	DBName     string
+	DBUsername string
+	DBPassword string
+
+	// Admin (user provides)
+	AdminUsername string
+	AdminPassword string
 }
 
 type Config struct {
@@ -60,16 +68,15 @@ func (p *Provisioner) Create(req *CreateRequest) (*registry.Client, error) {
 	}
 	fmt.Println("✓ Validation passed")
 
-	// 2. Generate secrets
-	adminPassword := secrets.GeneratePassword(16)
+	// 2. Generate secrets (auto-generated, user doesn't need to input)
 	cookieSecret := secrets.GenerateSecret()
-	revalidationSecret := secrets.GenerateSecret()
 	fmt.Println("✓ Secrets generated")
 
-	// 3. Get ports
-	vendurePort := p.getNextPort()
-	storefrontPort := vendurePort + 1
-	fmt.Printf("✓ Assigned ports: Vendure=%d, Storefront=%d\n", vendurePort, storefrontPort)
+	// 3. Get ports (3 ports per client: app, postgres, storefront)
+	appPort := p.getNextPort()
+	postgresPort := appPort + 1
+	storefrontPort := appPort + 2
+	fmt.Printf("✓ Assigned ports: App=%d, Postgres=%d, Storefront=%d\n", appPort, postgresPort, storefrontPort)
 
 	// 4. Create work directory
 	clientDir := filepath.Join(p.config.WorkDir, req.ClientID)
@@ -84,57 +91,67 @@ func (p *Provisioner) Create(req *CreateRequest) (*registry.Client, error) {
 	}
 	fmt.Println("✓ Storefront cloned")
 
-	// In the Create function, after line "✓ Storefront cloned"
+	// 6. Create storefront Dockerfile
 	storefrontDir := filepath.Join(clientDir, "storefront")
 	if err := p.createStorefrontDockerfile(storefrontDir); err != nil {
 		return nil, fmt.Errorf("failed to create Dockerfile: %v", err)
 	}
 	fmt.Println("✓ Dockerfile created")
 
-	// 6. Database name
-	dbName := fmt.Sprintf("vendure_%s", req.ClientID)
-
-	// 7. Render templates
+	// 7. Prepare template data
 	templateData := map[string]interface{}{
-		"ClientID":           req.ClientID,
-		"Domain":             req.Domain,
-		"BrandName":          req.BrandName,
-		"DBName":             dbName,
-		"AdminEmail":         req.AdminEmail,
-		"AdminPassword":      adminPassword,
-		"CookieSecret":       cookieSecret,
-		"RevalidationSecret": revalidationSecret,
-		"VendurePort":        vendurePort,
-		"StorefrontPort":     storefrontPort,
+		"ClientID":       req.ClientID,
+		"Domain":         req.Domain,
+		"BrandName":      req.BrandName,
+		"DBName":         req.DBName,
+		"DBUsername":     req.DBUsername,
+		"DBPassword":     req.DBPassword,
+		"AdminUsername":  req.AdminUsername,
+		"AdminPassword":  req.AdminPassword,
+		"CookieSecret":   cookieSecret,
+		"AppPort":        appPort,
+		"PostgresPort":   postgresPort,
+		"StorefrontPort": storefrontPort,
+		"GeneratedAt":    time.Now().Format(time.RFC3339),
 	}
 
-	if err := p.renderer.Render("vendure.env.tmpl", templateData, filepath.Join(clientDir, "vendure.env")); err != nil {
-		return nil, fmt.Errorf("failed to render vendure.env: %v", err)
+	// 8. Render .env file
+	if err := p.renderer.Render(".env.tmpl", templateData, filepath.Join(clientDir, ".env")); err != nil {
+		return nil, fmt.Errorf("failed to render .env: %v", err)
 	}
 
+	// 9. Render nginx.conf
+	if err := p.renderer.Render("nginx.conf.tmpl", templateData, filepath.Join(clientDir, "nginx.conf")); err != nil {
+		return nil, fmt.Errorf("failed to render nginx.conf: %v", err)
+	}
+
+	// 10. Render docker-compose.yml
 	if err := p.renderer.Render("docker-compose.yml.tmpl", templateData, filepath.Join(clientDir, "docker-compose.yml")); err != nil {
 		return nil, fmt.Errorf("failed to render docker-compose.yml: %v", err)
 	}
-	fmt.Println("✓ Templates rendered")
+	fmt.Println("✓ Templates rendered (env, nginx, docker-compose)")
 
-	// 8. Deploy
+	// 10. Deploy
 	fmt.Println("Deploying containers...")
 	if err := p.deployer.Deploy(req.ClientID); err != nil {
 		return nil, fmt.Errorf("deployment failed: %v", err)
 	}
 	fmt.Println("✓ Containers deployed")
 
-	// 9. Create client record
+	// 11. Create client record
 	client := &registry.Client{
 		ID:             req.ClientID,
 		Domain:         req.Domain,
 		BrandName:      req.BrandName,
 		Status:         "active",
-		DBName:         dbName,
-		AdminEmail:     req.AdminEmail,
-		AdminPassword:  adminPassword,
+		DBName:         req.DBName,
+		DBUsername:     req.DBUsername,
+		DBPassword:     req.DBPassword,
+		AdminUsername:  req.AdminUsername,
+		AdminPassword:  req.AdminPassword,
 		CookieSecret:   cookieSecret,
-		VendurePort:    vendurePort,
+		AppPort:        appPort,
+		PostgresPort:   postgresPort,
 		StorefrontPort: storefrontPort,
 		CreatedAt:      time.Now(),
 	}
@@ -199,7 +216,7 @@ func (p *Provisioner) cloneStorefront(targetDir string) error {
 
 func (p *Provisioner) getNextPort() int {
 	clients, _ := p.registry.List()
-	return p.config.BasePort + (len(clients) * 2)
+	return p.config.BasePort + (len(clients) * 3) // 3 ports per client: app, postgres, storefront
 }
 
 // Add this function to provisioner.go
