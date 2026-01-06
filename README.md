@@ -1,6 +1,6 @@
 # commercex-provisioner
 
-Enterprise-grade multi-tenant e-commerce provisioning platform. Instantly deploy isolated Vendure commerce stacks with production-ready React/Vite storefronts, dynamic port management, and automated Docker orchestration.
+Enterprise-grade multi-tenant e-commerce provisioning platform. Instantly deploy isolated CommerceX commerce stacks with production-ready React/Vite storefronts, dynamic port management, and automated Docker orchestration.
 
 **One command. Unlimited commerce environments. Zero manual configuration.**
 
@@ -20,7 +20,7 @@ Enterprise-grade multi-tenant e-commerce provisioning platform. Instantly deploy
 - **Cryptographic Security**: Automatically generates secure admin passwords and session secrets per client
 
 ### **Modern Commerce Stack**
-- **Vendure Commerce Engine**: Industry-leading headless commerce platform with full GraphQL API
+- **CommerceX Commerce Engine**: Node.js-based commerce platform with full GraphQL API
 - **React/Vite Storefront**: Lightning-fast frontend with component library and production serving
 - **Service Discovery**: Internal Docker networks enable secure service-to-service communication
 - **Persistent Storage**: Named volumes ensure database persistence across container lifecycles
@@ -49,7 +49,8 @@ commercex-provisioner/
 │   └── templates/renderer.go      # Configuration rendering
 ├── templates/
 │   ├── docker-compose.yml.tmpl    # Container orchestration definitions
-│   └── vendure.env.tmpl           # Commerce engine configuration
+│   ├── .env.tmpl                  # Commerce engine configuration
+│   └── nginx.conf.tmpl            # Nginx reverse proxy configuration
 └── data/
     ├── registry.json              # Client metadata store
     └── clients/                   # Per-client isolated environments
@@ -57,18 +58,22 @@ commercex-provisioner/
 
 ### **Deployment Architecture**
 
-Each client deployment consists of three orchestrated services:
+Each client deployment consists of four orchestrated services:
 
 ```yaml
 Client Environment:
-├── PostgreSQL Database
-│   ├── Isolated schema per client
+├── PostgreSQL Database (postgres_db)
+│   ├── Isolated database per client
 │   ├── Named volume for persistence
 │   └── Health checks for startup sequencing
 │
-├── Vendure Commerce Engine
-│   ├── GraphQL Admin & Shop APIs
-│   ├── Service discovery via internal network
+├── CommerceX Server (commercex-server)
+│   ├── Main application server
+│   ├── GraphQL API on port 3000
+│   └── Depends on database health
+│
+├── CommerceX Worker (commercex-worker)
+│   ├── Background job processing
 │   └── Depends on database health
 │
 └── React/Vite Storefront
@@ -80,9 +85,9 @@ Client Environment:
 ### **Client Isolation Strategy**
 
 - **Network Isolation**: Separate Docker network per client (`{clientID}_network`)
-- **Database Separation**: Unique PostgreSQL database (`vendure_{clientID}`)
-- **Container Isolation**: Dedicated containers (`postgres_{clientID}`, `vendure_{clientID}`, `storefront_{clientID}`)
-- **Port Independence**: Dynamic allocation (`BasePort + 2*clientIndex`)
+- **Database Separation**: Unique PostgreSQL database per client
+- **Container Isolation**: Dedicated containers (`postgres_{clientID}`, `commercex_server_{clientID}`, `commercex_worker_{clientID}`, `storefront_{clientID}`)
+- **Port Independence**: Dynamic allocation (`BasePort + 3*clientIndex`) - 3 ports per client
 
 ---
 
@@ -136,32 +141,40 @@ go build -o bin/innovatex cmd/innovatex/main.go
 ### **Deploy Your First Commerce Environment**
 
 ```bash
+# Interactive mode (prompts for all values)
+innovatex create
+
+# Or with flags (also supports interactive prompts for missing values)
 innovatex create \
   --id=mystore \
   --domain=mystore.local \
   --brand="My Store" \
-  --email=admin@mystore.com
+  --db-name=mystore_db \
+  --db-user=mystore_user \
+  --db-password=secure_pass \
+  --admin-user=admin \
+  --admin-password=admin_pass
 ```
 
 **What happens automatically:**
-1. ✓ Generates cryptographically secure admin password and session secrets
-2. ✓ Allocates unique ports (Vendure on 8000, Storefront on 8001)
+1. ✓ Generates cryptographically secure cookie secrets
+2. ✓ Allocates unique ports (App: 8000, Postgres: 8001, Storefront: 8002)
 3. ✓ Creates isolated PostgreSQL database
-4. ✓ Builds and deploys React/Vite storefront with nginx
-5. ✓ Starts all services with health check orchestration
+4. ✓ Clones and builds React/Vite storefront with nginx
+5. ✓ Starts all 4 services with health check orchestration
 6. ✓ Registers client in registry for ongoing management
 
-### **Access Your Storefront**
+### **Access Your Services**
 
 ```bash
 # Storefront (React/Vite with nginx)
-http://localhost:8001
+http://localhost:8002
 
-# Vendure Admin Panel
+# CommerceX Application
 http://localhost:8000
 
-# GraphQL Shop API (internal)
-http://vendure:3000/shop-api
+# PostgreSQL (external access)
+localhost:8001
 ```
 
 ---
@@ -171,31 +184,43 @@ http://vendure:3000/shop-api
 ### **Create a New Commerce Client**
 
 ```bash
+# All flags are optional - CLI will prompt for missing values
 innovatex create \
   --id=store-name \
   --domain=store-name.local \
   --brand="Store Display Name" \
-  --email=admin@store-name.com
+  --db-name=store_db \
+  --db-user=store_user \
+  --db-password=db_pass123 \
+  --admin-user=admin \
+  --admin-password=admin_pass123
 ```
 
 **Parameters:**
-- `--id` (required): Unique client identifier
-- `--domain` (required): Client domain/hostname
-- `--brand` (required): Display name for the storefront
-- `--email` (required): Admin email address
+- `--id`: Unique client identifier (lowercase, alphanumeric, dashes)
+- `--domain`: Client domain/hostname
+- `--brand`: Display name for the storefront
+- `--db-name`: PostgreSQL database name
+- `--db-user`: Database username
+- `--db-password`: Database password
+- `--admin-user`: Admin panel username
+- `--admin-password`: Admin panel password
 
 **Output:**
 ```
-Creating commerce environment for client: store-name
-✓ Generated secure secrets
-✓ Allocated ports: 8000 (Vendure), 8001 (Storefront)
-✓ Created database: vendure_store_name
-✓ Built storefront container
-✓ Started services with health checks
-✓ Client registered in registry
+Creating client: store-name
+✓ Validation passed
+✓ Secrets generated
+✓ Assigned ports: App=8000, Postgres=8001, Storefront=8002
+✓ Work directory created
+✓ Storefront cloned
+✓ Dockerfile created
+✓ Templates rendered (env, nginx, docker-compose)
+✓ Containers deployed
+✓ Client registered
 
-Admin Panel: http://localhost:8000
-Storefront: http://localhost:8001
+Application: http://localhost:8000
+Storefront: http://localhost:8002
 ```
 
 ### **List All Clients**
@@ -256,15 +281,14 @@ grep -A 2 "store-name" data/registry.json | grep -E "AdminPassword|CookieSecret"
 Customize provisioner behavior via environment variables:
 
 ```bash
-# Custom base port (default: 8000)
-export BASE_PORT=9000
+# Client deployment directory (default: ~/.innovatex/clients/)
+export INNOVATEX_WORK_DIR=/var/lib/innovatex/clients
 
-# Custom storage path (default: ./data)
-export DATA_PATH=/var/lib/commercex
+# Template files location (default: ~/.innovatex/templates/)
+export INNOVATEX_TEMPLATE_DIR=/etc/innovatex/templates
 
-# Database credentials
-export DB_USER=vendure_admin
-export DB_PASSWORD=secure_password
+# Client registry path (default: ~/.innovatex/registry.json)
+export INNOVATEX_REGISTRY=/var/lib/innovatex/registry.json
 ```
 
 ### **Template Customization**
@@ -272,16 +296,22 @@ export DB_PASSWORD=secure_password
 Templates in `templates/` use Go's `text/template` syntax:
 
 - `docker-compose.yml.tmpl`: Container orchestration definitions
-- `vendure.env.tmpl`: Commerce engine configuration
+- `.env.tmpl`: Commerce engine configuration
+- `nginx.conf.tmpl`: Reverse proxy configuration
 
 **Template variables available:**
 - `{{.ClientID}}`: Unique client identifier
 - `{{.DBName}}`: Database name
-- `{{.AdminPassword}}`: Generated admin password
+- `{{.DBUsername}}`: Database username
+- `{{.DBPassword}}`: Database password
+- `{{.AdminUsername}}`: Admin username
+- `{{.AdminPassword}}`: Admin password
 - `{{.CookieSecret}}`: Session secret
-- `{{.VendurePort}}`: Allocated Vendure port
-- `{{.StorefrontPort}}`: Allocated storefront port
+- `{{.AppPort}}`: CommerceX application port
+- `{{.PostgresPort}}`: PostgreSQL external port
+- `{{.StorefrontPort}}`: Storefront port
 - `{{.BrandName}}`: Client brand name
+- `{{.Domain}}`: Client domain
 
 ---
 
@@ -299,20 +329,21 @@ Templates in `templates/` use Go's `text/template` syntax:
 
 ```bash
 # Verify client provisioning
-./bin/innovatex list
+innovatex list
 
 # Check container health
 docker ps | grep {clientID}
+# Expected: commercex_server_{clientID}, commercex_worker_{clientID}, postgres_{clientID}, storefront_{clientID}
 
 # Monitor logs
-docker logs vendure_{clientID}
-docker logs storefront_{clientID}
+docker logs commercex_server_{clientID} -f
+docker logs storefront_{clientID} --tail=50
 
 # Test storefront accessibility
 curl -I http://localhost:{StorefrontPort}
 
-# Verify Vendure API
-curl http://localhost:{VendurePort}/health
+# Check database connectivity
+docker exec postgres_{clientID} pg_isready -U {db_username}
 ```
 
 ### **Multi-Client Scaling**
@@ -325,14 +356,18 @@ for i in {1..5}; do
     --id=store-$i \
     --domain=store-$i.local \
     --brand="Store $i" \
-    --email=admin@store-$i.com
+    --db-name=store_${i}_db \
+    --db-user=store${i}_user \
+    --db-password=pass${i} \
+    --admin-user=admin \
+    --admin-password=admin${i}
 done
 
 # Verify all deployments
 innovatex list
 ```
 
-Each deployment automatically allocates unique ports and databases.
+Each deployment automatically allocates unique ports (3 per client) and isolated databases.
 
 ---
 
@@ -341,10 +376,10 @@ Each deployment automatically allocates unique ports and databases.
 ### **Common Issues**
 
 #### **"Port already in use"**
-Solution: The port allocation algorithm increments by 2 for each client. Verify no services occupy your port range:
+Solution: The port allocation algorithm increments by 3 for each client (app, postgres, storefront). Verify no services occupy your port range:
 ```bash
 netstat -tulpn | grep LISTEN
-# Adjust BASE_PORT environment variable if needed
+# Default starts at 8000: Client 1 uses 8000-8002, Client 2 uses 8003-8005, etc.
 ```
 
 #### **"Docker build timeout"**
@@ -357,13 +392,14 @@ docker logs storefront_{clientID} --follow
 Solution: PostgreSQL health checks may not have completed. Wait 10-15 seconds and verify:
 ```bash
 docker logs postgres_{clientID}
+# Check health: docker inspect postgres_{clientID} --format='{{.State.Health.Status}}'
 ```
 
 #### **"Storefront shows blank page"**
-Solution: Verify GraphQL API connectivity. Check Vendure logs:
+Solution: Verify CommerceX API connectivity. Check server logs:
 ```bash
-docker logs vendure_{clientID}
-# Ensure Vendure completed initialization
+docker logs commercex_server_{clientID}
+# Ensure CommerceX completed initialization
 ```
 
 ### **Debug Mode**
@@ -396,7 +432,7 @@ innovatex create --id={clientID} ...
 
 **Backup database before deletion:**
 ```bash
-docker exec postgres_{clientID} pg_dump -U vendure_admin vendure_{clientID} > backup_{clientID}.sql
+docker exec postgres_{clientID} pg_dump -U {db_username} {db_name} > backup_{clientID}.sql
 ```
 
 ---
@@ -440,19 +476,20 @@ docker-compose -f data/clients/test/docker-compose.yml logs -f
 ## 📊 Project Status
 
 ### **✅ Production Ready Features**
-- Multi-tenant provisioning with complete isolation
+- Multi-tenant provisioning with complete isolation (4-container stack per client)
 - Docker Compose orchestration with health checks
-- Dynamic port allocation and management
-- PostgreSQL database per client
-- Vendure commerce engine integration
-- React/Vite storefront deployment
-- CLI interface with all CRUD operations
+- Dynamic port allocation (3 ports per client)
+- PostgreSQL database per client with external access
+- CommerceX commerce engine integration (server + worker)
+- React/Vite storefront deployment with nginx
+- CLI interface with interactive prompts and flag support
 - JSON registry for client state management
-- Cryptographic secret generation
+- Cryptographic secret generation (32-byte cookie secrets)
+- Template-driven configuration system
 
 ### **⚠️ Known Limitations**
-- Vendure schema auto-sync may require manual intervention in some containerized environments
-- Database migrations should be validated before production deployments
+- Database provisioning logic exists but currently unused
+- Manual database backup required before deletion
 
 ### **🔮 Roadmap**
 - [ ] Kubernetes deployment support
@@ -482,11 +519,12 @@ MIT License - See [LICENSE](LICENSE) file for details
 ## 🌟 Acknowledgments
 
 Built with modern cloud-native technologies:
-- [Vendure](https://www.vendure.io/) - Headless commerce platform
+- [CommerceX](https://github.com/abduazizali/commercex) - Node.js commerce platform
 - [Docker](https://www.docker.com/) - Container orchestration
 - [React](https://react.dev/) - UI framework
 - [Vite](https://vitejs.dev/) - Lightning-fast build tool
 - [Cobra](https://cobra.dev/) - CLI framework
+- [PostgreSQL](https://www.postgresql.org/) - Database engine
 
 ---
 

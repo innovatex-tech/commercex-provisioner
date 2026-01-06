@@ -98,6 +98,12 @@ func (p *Provisioner) Create(req *CreateRequest) (*registry.Client, error) {
 	}
 	fmt.Println("✓ Dockerfile created")
 
+	// 6.5. Create storefront .env file
+	if err := p.createStorefrontEnv(storefrontDir, req.BrandName, appPort); err != nil {
+		return nil, fmt.Errorf("failed to create storefront .env: %v", err)
+	}
+	fmt.Println("✓ Storefront .env created")
+
 	// 7. Prepare template data
 	templateData := map[string]interface{}{
 		"ClientID":       req.ClientID,
@@ -239,4 +245,14 @@ CMD ["nginx", "-g", "daemon off;"]
 `
 
 	return os.WriteFile(filepath.Join(storefrontDir, "Dockerfile"), []byte(dockerfile), 0644)
+}
+
+// createStorefrontEnv creates the .env file for the React/Vite storefront
+func (p *Provisioner) createStorefrontEnv(storefrontDir, brandName string, appPort int) error {
+	envContent := fmt.Sprintf(`# API Configuration
+VITE_API_URL=http://commercex-server:3000/shop-api
+VITE_SITE_NAME=%s
+`, brandName)
+
+	return os.WriteFile(filepath.Join(storefrontDir, ".env"), []byte(envContent), 0644)
 }
