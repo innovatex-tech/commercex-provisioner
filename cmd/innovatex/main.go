@@ -280,8 +280,17 @@ func createCmd() *cobra.Command {
 			reg := registry.NewStore(getRegistryPath())
 			scanner := bufio.NewScanner(os.Stdin)
 
-			fmt.Println("\n🚀 CommerceX Provisioner - Create New Client")
-			fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+			fmt.Println("\n╔══════════════════════════════════════════════════════════╗")
+			fmt.Println("║                                                          ║")
+			fmt.Println("║      🚀  CommerceX Multi-Tenant Provisioner  🚀         ║")
+			fmt.Println("║                                                          ║")
+			fmt.Println("║    Create isolated e-commerce environments instantly    ║")
+			fmt.Println("║                                                          ║")
+			fmt.Println("╚══════════════════════════════════════════════════════════╝")
+			fmt.Println()
+
+			fmt.Println("📋 STEP 1/4: Client Information")
+			fmt.Println("─────────────────────────────────────────────────────────")
 
 			// Prompt for Client ID if not provided
 			if clientID == "" {
@@ -290,10 +299,12 @@ func createCmd() *cobra.Command {
 
 			// Prompt for Domain if not provided
 			if domain == "" {
+				fmt.Println()
 				fmt.Println("📡 Deployment Target")
-				fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-				fmt.Println("  • For local testing: use 'localhost' or '*.local' (e.g., mystore.local)")
-				fmt.Println("  • For production: use your server domain or IP (e.g., innovatex.dev or 123.45.67.89)")
+				fmt.Println("─────────────────────────────────────────────────────────")
+				fmt.Println("  💡 Tip:")
+				fmt.Println("     Local:      localhost  or  mystore.local")
+				fmt.Println("     Production: innovatex.dev  or  123.45.67.89")
 				fmt.Println()
 				domain = promptInput(scanner, "Domain or IP", validateDomain)
 			}
@@ -303,8 +314,8 @@ func createCmd() *cobra.Command {
 				brandName = promptInput(scanner, "Brand Name (e.g., My Store)", validateBrandName)
 			}
 
-			fmt.Println("\n📊 Database Configuration")
-			fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+			fmt.Println("\n📊 STEP 2/4: Database Configuration")
+			fmt.Println("─────────────────────────────────────────────────────────")
 
 			// Prompt for DB Name if not provided
 			if dbName == "" {
@@ -321,8 +332,8 @@ func createCmd() *cobra.Command {
 				dbPassword = promptInput(scanner, "Database Password (min 6 characters)", validatePassword)
 			}
 
-			fmt.Println("\n👤 Admin Account Configuration")
-			fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+			fmt.Println("\n👤 STEP 3/4: Admin Account")
+			fmt.Println("─────────────────────────────────────────────────────────")
 
 			// Prompt for Admin Username if not provided
 			if adminUsername == "" {
@@ -334,7 +345,10 @@ func createCmd() *cobra.Command {
 				adminPassword = promptInput(scanner, "Admin Password (min 6 characters)", validatePassword)
 			}
 
-			fmt.Println("\n⚙️  Creating commerce environment...\n")
+			fmt.Println("\n⚙️  STEP 4/4: Deployment")
+			fmt.Println("─────────────────────────────────────────────────────────")
+			fmt.Println("🔨 Building and deploying your commerce environment...")
+			fmt.Println()
 
 			dbProv := db.NewProvisioner(config.DBHost, config.DBPort, config.DBUser, config.DBPassword, config.AdminDB)
 			prov := core.NewProvisioner(config, reg, dbProv)
@@ -355,21 +369,47 @@ func createCmd() *cobra.Command {
 				return err
 			}
 
-			fmt.Printf("\n")
-			fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
-			fmt.Printf("  ✅ Client Created Successfully!\n")
-			fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
-			fmt.Printf("Client ID:   %s\n", client.ID)
-			fmt.Printf("Brand Name:  %s\n", client.BrandName)
-			fmt.Printf("Database:    %s\n\n", client.DBName)
-			fmt.Printf("URLs:\n")
-			fmt.Printf("  CommerceX API:  http://localhost:%d\n", client.AppPort)
-			fmt.Printf("  Storefront:     http://localhost:%d\n", client.StorefrontPort)
-			fmt.Printf("  PostgreSQL:     localhost:%d\n\n", client.PostgresPort)
-			fmt.Printf("Admin Login:\n")
-			fmt.Printf("  Username:  %s\n", client.AdminUsername)
-			fmt.Printf("  Password:  %s\n\n", client.AdminPassword)
-			fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+			fmt.Println("\n╔══════════════════════════════════════════════════════════╗")
+			fmt.Println("║                                                          ║")
+			fmt.Println("║           ✅  DEPLOYMENT SUCCESSFUL!  ✅                ║")
+			fmt.Println("║                                                          ║")
+			fmt.Println("╚══════════════════════════════════════════════════════════╝")
+			fmt.Println()
+
+			// Client info box
+			fmt.Println("┌─ 📦 Client Information ─────────────────────────────────┐")
+			fmt.Printf("│  Client ID:    %-42s │\n", client.ID)
+			fmt.Printf("│  Brand:        %-42s │\n", client.BrandName)
+			fmt.Printf("│  Database:     %-42s │\n", client.DBName)
+			fmt.Println("└──────────────────────────────────────────────────────────┘")
+			fmt.Println()
+
+			// Access URLs box
+			domainDisplay := client.Domain
+			if client.Domain == "localhost" || strings.HasSuffix(client.Domain, ".local") {
+				domainDisplay = "localhost"
+			}
+			fmt.Println("┌─ 🌐 Access URLs ────────────────────────────────────────┐")
+			fmt.Printf("│  🛍️  Storefront:   http://%-29s │\n", fmt.Sprintf("%s:%d", domainDisplay, client.StorefrontPort))
+			fmt.Printf("│  🔧 CommerceX:     http://%-29s │\n", fmt.Sprintf("%s:%d", domainDisplay, client.AppPort))
+			fmt.Printf("│  🗄️  PostgreSQL:   %-38s │\n", fmt.Sprintf("%s:%d", domainDisplay, client.PostgresPort))
+			fmt.Println("└──────────────────────────────────────────────────────────┘")
+			fmt.Println()
+
+			// Admin credentials box
+			fmt.Println("┌─ 🔐 Admin Credentials ──────────────────────────────────┐")
+			fmt.Printf("│  Username:     %-42s │\n", client.AdminUsername)
+			fmt.Printf("│  Password:     %-42s │\n", client.AdminPassword)
+			fmt.Println("└──────────────────────────────────────────────────────────┘")
+			fmt.Println()
+
+			// Next steps
+			fmt.Println("💡 Next Steps:")
+			fmt.Printf("   1. Visit your storefront: http://%s:%d\n", domainDisplay, client.StorefrontPort)
+			fmt.Printf("   2. Access admin panel: http://%s:%d\n", domainDisplay, client.AppPort)
+			fmt.Println("   3. Check status: innovatex status --id=" + client.ID)
+			fmt.Println("   4. View logs: docker logs commercex_server_" + client.ID)
+			fmt.Println()
 
 			return nil
 		},
@@ -461,12 +501,12 @@ func validatePassword(input string) error {
 // Helper function to prompt for input with validation
 func promptInput(scanner *bufio.Scanner, prompt string, validator func(string) error) string {
 	for {
-		fmt.Printf("➤ %s: ", prompt)
+		fmt.Printf("  ▸ %s: ", prompt)
 		scanner.Scan()
 		input := strings.TrimSpace(scanner.Text())
 
 		if err := validator(input); err != nil {
-			fmt.Printf("  ❌ %s\n", err.Error())
+			fmt.Printf("    ❌ %s\n", err.Error())
 			continue
 		}
 
@@ -476,7 +516,7 @@ func promptInput(scanner *bufio.Scanner, prompt string, validator func(string) e
 
 // Helper function to prompt for input with default value
 func promptInputWithDefault(scanner *bufio.Scanner, prompt, defaultValue string, validator func(string) error) string {
-	fmt.Printf("➤ %s [%s]: ", prompt, defaultValue)
+	fmt.Printf("  ▸ %s [%s]: ", prompt, defaultValue)
 	scanner.Scan()
 	input := strings.TrimSpace(scanner.Text())
 
