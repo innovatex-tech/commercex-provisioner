@@ -6,6 +6,44 @@ Enterprise-grade multi-tenant e-commerce provisioning platform. Instantly deploy
 
 ---
 
+## 📦 Installation
+
+### Quick Install (Recommended)
+
+One command installs everything - Go, Docker, Docker Compose, and InnovateX:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/innovatex-tech/commercex-provisioner/main/install.sh | bash
+```
+
+The installer will:
+- ✓ Check and install Go (1.21+) if missing
+- ✓ Check and install Docker (20.0+) if missing  
+- ✓ Check and install Docker Compose if missing
+- ✓ Install InnovateX Provisioner to `~/.innovatex/bin/`
+- ✓ Configure PATH automatically
+- ⊘ Skip dependencies that are already installed
+
+### Manual Installation
+
+If you already have Go installed:
+
+```bash
+GOBIN=~/.innovatex/bin go install github.com/innovatex-tech/commercex-provisioner/cmd/innovatex@latest
+echo 'export PATH="$HOME/.innovatex/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+### Uninstall
+
+```bash
+rm -rf ~/.innovatex/bin/innovatex
+# Optionally remove all data:
+# rm -rf ~/.innovatex/
+```
+
+---
+
 ## 🚀 Key Features
 
 ### **Multi-Tenant Infrastructure Isolation**
