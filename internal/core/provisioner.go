@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/innovatex-tech/commercex-provisioner/internal/db"
@@ -99,7 +100,7 @@ func (p *Provisioner) Create(req *CreateRequest) (*registry.Client, error) {
 	fmt.Println("✓ Dockerfile created")
 
 	// 6.5. Create storefront .env file
-	if err := p.createStorefrontEnv(storefrontDir, req.BrandName, appPort); err != nil {
+	if err := p.createStorefrontEnv(storefrontDir, req.BrandName, req.Domain, appPort); err != nil {
 		return nil, fmt.Errorf("failed to create storefront .env: %v", err)
 	}
 	fmt.Println("✓ Storefront .env created")
@@ -248,11 +249,24 @@ CMD ["nginx", "-g", "daemon off;"]
 }
 
 // createStorefrontEnv creates the .env file for the React/Vite storefront
-func (p *Provisioner) createStorefrontEnv(storefrontDir, brandName string, appPort int) error {
+// Automatically detects local vs production based on domain:
+// - localhost or *.local -> uses localhost (for local development)
+// - anything else -> uses the domain (for production)
+func (p *Provisioner) createStorefrontEnv(storefrontDir, brandName, domain string, appPort int) error {
+	var apiURL string
+
+	// Auto-detect: if domain is localhost or ends with .local, use localhost
+	if domain == "localhost" || strings.HasSuffix(domain, ".local") {
+		apiURL = fmt.Sprintf("http://localhost:%d/shop-api", appPort)
+	} else {
+		// Production: use the actual domain
+		apiURL = fmt.Sprintf("http://%s:%d/shop-api", domain, appPort)
+	}
+
 	envContent := fmt.Sprintf(`# API Configuration
-VITE_API_URL=http://localhost:%d/shop-api
+VITE_API_URL=%s
 VITE_SITE_NAME=%s
-`, appPort, brandName)
+`, apiURL, brandName)
 
 	return os.WriteFile(filepath.Join(storefrontDir, ".env"), []byte(envContent), 0644)
 }

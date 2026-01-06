@@ -290,7 +290,12 @@ func createCmd() *cobra.Command {
 
 			// Prompt for Domain if not provided
 			if domain == "" {
-				domain = promptInput(scanner, "Domain (e.g., mystore.local)", validateDomain)
+				fmt.Println("📡 Deployment Target")
+				fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+				fmt.Println("  • For local testing: use 'localhost' or '*.local' (e.g., mystore.local)")
+				fmt.Println("  • For production: use your server domain or IP (e.g., innovatex.dev or 123.45.67.89)")
+				fmt.Println()
+				domain = promptInput(scanner, "Domain or IP", validateDomain)
 			}
 
 			// Prompt for Brand Name if not provided
