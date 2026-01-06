@@ -250,9 +250,9 @@ CMD ["nginx", "-g", "daemon off;"]
 // createStorefrontEnv creates the .env file for the React/Vite storefront
 func (p *Provisioner) createStorefrontEnv(storefrontDir, brandName string, appPort int) error {
 	envContent := fmt.Sprintf(`# API Configuration
-VITE_API_URL=http://commercex-server:3000/shop-api
+VITE_API_URL=http://localhost:%d/shop-api
 VITE_SITE_NAME=%s
-`, brandName)
+`, appPort, brandName)
 
 	return os.WriteFile(filepath.Join(storefrontDir, ".env"), []byte(envContent), 0644)
 }
