@@ -16,7 +16,7 @@ func NewDockerDeployer(workDir string) *DockerDeployer {
 func (d *DockerDeployer) Deploy(clientID string) error {
 	clientDir := fmt.Sprintf("%s/%s", d.workDir, clientID)
 
-	cmd := exec.Command("docker-compose", "up", "-d", "--build")
+	cmd := exec.Command("docker", "compose", "up", "-d", "--build")
 	cmd.Dir = clientDir
 
 	output, err := cmd.CombinedOutput()
@@ -31,16 +31,21 @@ func (d *DockerDeployer) Deploy(clientID string) error {
 func (d *DockerDeployer) Stop(clientID string) error {
 	clientDir := fmt.Sprintf("%s/%s", d.workDir, clientID)
 
-	cmd := exec.Command("docker-compose", "stop")
+	cmd := exec.Command("docker", "compose", "stop")
 	cmd.Dir = clientDir
 
-	return cmd.Run()
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("stop failed: %s", string(output))
+	}
+
+	return nil
 }
 
 func (d *DockerDeployer) Remove(clientID string) error {
 	clientDir := fmt.Sprintf("%s/%s", d.workDir, clientID)
 
-	cmd := exec.Command("docker-compose", "down", "-v")
+	cmd := exec.Command("docker", "compose", "down", "-v")
 	cmd.Dir = clientDir
 
 	output, err := cmd.CombinedOutput()
