@@ -8,9 +8,12 @@ import (
 	"regexp"
 	"strings"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/innovatex-tech/commercex-provisioner/internal/core"
 	"github.com/innovatex-tech/commercex-provisioner/internal/db"
+	"github.com/innovatex-tech/commercex-provisioner/internal/deploy"
 	"github.com/innovatex-tech/commercex-provisioner/internal/registry"
+	"github.com/innovatex-tech/commercex-provisioner/internal/tui"
 	"github.com/spf13/cobra"
 )
 
@@ -261,6 +264,10 @@ func main() {
 	rootCmd.AddCommand(listCmd())
 	rootCmd.AddCommand(deleteCmd())
 	rootCmd.AddCommand(statusCmd())
+	rootCmd.AddCommand(startCmd())
+	rootCmd.AddCommand(stopCmd())
+	rootCmd.AddCommand(logsCmd())
+	rootCmd.AddCommand(dashboardCmd())
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
@@ -636,4 +643,130 @@ func statusCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&clientID, "id", "i", "", "Client ID")
 
 	return cmd
+}
+
+func startCmd() *cobra.Command {
+	var clientID string
+
+	cmd := &cobra.Command{
+		Use:   "start [id]",
+		Short: "Start a stopped client's containers",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 0 {
+				clientID = args[0]
+			}
+			if clientID == "" {
+				return fmt.Errorf("client ID is required as an argument or via --id flag")
+			}
+
+			// Verify client exists
+			reg := registry.NewStore(getRegistryPath())
+			if _, err := reg.Get(clientID); err != nil {
+				return err
+			}
+
+			deployer := deploy.NewDockerDeployer(getWorkDir())
+			fmt.Printf("Starting %s...\n", clientID)
+			if err := deployer.Start(clientID); err != nil {
+				return err
+			}
+			fmt.Printf("✓ %s started\n", clientID)
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVarP(&clientID, "id", "i", "", "Client ID")
+	return cmd
+}
+
+func stopCmd() *cobra.Command {
+	var clientID string
+
+	cmd := &cobra.Command{
+		Use:   "stop [id]",
+		Short: "Stop a running client's containers",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 0 {
+				clientID = args[0]
+			}
+			if clientID == "" {
+				return fmt.Errorf("client ID is required as an argument or via --id flag")
+			}
+
+			reg := registry.NewStore(getRegistryPath())
+			if _, err := reg.Get(clientID); err != nil {
+				return err
+			}
+
+			deployer := deploy.NewDockerDeployer(getWorkDir())
+			fmt.Printf("Stopping %s...\n", clientID)
+			if err := deployer.Stop(clientID); err != nil {
+				return err
+			}
+			fmt.Printf("✓ %s stopped\n", clientID)
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVarP(&clientID, "id", "i", "", "Client ID")
+	return cmd
+}
+
+func logsCmd() *cobra.Command {
+	var clientID, service string
+	var tail int
+	var follow bool
+
+	cmd := &cobra.Command{
+		Use:   "logs [id]",
+		Short: "View logs for a client's containers",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 0 {
+				clientID = args[0]
+			}
+			if clientID == "" {
+				return fmt.Errorf("client ID is required as an argument or via --id flag")
+			}
+
+			reg := registry.NewStore(getRegistryPath())
+			if _, err := reg.Get(clientID); err != nil {
+				return err
+			}
+
+			deployer := deploy.NewDockerDeployer(getWorkDir())
+			return deployer.Logs(clientID, service, tail, follow)
+		},
+	}
+
+	cmd.Flags().StringVarP(&clientID, "id", "i", "", "Client ID")
+	cmd.Flags().StringVarP(&service, "service", "s", "", "Specific service (commercex-server, commercex-worker, postgres_db, storefront)")
+	cmd.Flags().IntVar(&tail, "tail", 100, "Number of log lines to show from the end")
+	cmd.Flags().BoolVarP(&follow, "follow", "f", false, "Follow log output (like tail -f)")
+	return cmd
+}
+
+func dashboardCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "dashboard",
+		Short: "Open the interactive TUI dashboard",
+		Long:  "Launch a live terminal dashboard showing all clients, container health, and management actions.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			reg := registry.NewStore(getRegistryPath())
+			dashboard := tui.NewDashboard(getWorkDir(), reg)
+
+			p := tea.NewProgram(
+				dashboard,
+				tea.WithAltScreen(),
+				tea.WithMouseCellMotion(),
+			)
+
+			if _, err := p.Run(); err != nil {
+				return fmt.Errorf("dashboard error: %v", err)
+			}
+			return nil
+		},
+	}
 }
