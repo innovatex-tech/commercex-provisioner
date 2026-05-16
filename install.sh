@@ -68,6 +68,20 @@ detect_os() {
     echo $OS
 }
 
+# Check for Homebrew on macOS
+check_brew() {
+    if [[ "$(detect_os)" == "macos" ]]; then
+        if ! command -v brew &> /dev/null; then
+            print_warning "Homebrew not found. Homebrew is highly recommended for macOS."
+            print_step "To install Homebrew, run:"
+            echo '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
+            echo ""
+            print_error "Please install Homebrew and restart this script."
+            exit 1
+        fi
+    fi
+}
+
 # ─────────────────────────────────────────────────────────────────────
 # Check and Install Go
 # ─────────────────────────────────────────────────────────────────────
@@ -75,7 +89,7 @@ install_go() {
     print_step "Checking Go installation..."
     
     if command -v go &> /dev/null; then
-        GO_VERSION=$(go version | grep -oP 'go\K[0-9]+\.[0-9]+' | head -1)
+        GO_VERSION=$(go version | sed -En 's/.*go([0-9]+\.[0-9]+).*/\1/p')
         if version_gte "$GO_VERSION" "$GO_MIN_VERSION"; then
             print_skip "Go $GO_VERSION already installed (>= $GO_MIN_VERSION)"
             return 0
@@ -90,11 +104,15 @@ install_go() {
     case $OS in
         ubuntu|debian|pop)
             # Use official Go installer for latest version
+            ARCH=$(uname -m)
+            if [ "$ARCH" = "x86_64" ]; then ARCH="amd64"; fi
+            if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then ARCH="arm64"; fi
+            
             GO_LATEST=$(curl -s https://go.dev/VERSION?m=text | head -1)
-            curl -LO "https://go.dev/dl/${GO_LATEST}.linux-amd64.tar.gz"
+            curl -LO "https://go.dev/dl/${GO_LATEST}.linux-${ARCH}.tar.gz"
             sudo rm -rf /usr/local/go
-            sudo tar -C /usr/local -xzf "${GO_LATEST}.linux-amd64.tar.gz"
-            rm "${GO_LATEST}.linux-amd64.tar.gz"
+            sudo tar -C /usr/local -xzf "${GO_LATEST}.linux-${ARCH}.tar.gz"
+            rm "${GO_LATEST}.linux-${ARCH}.tar.gz"
             
             # Add to PATH if not already there
             if ! grep -q '/usr/local/go/bin' ~/.profile 2>/dev/null; then
@@ -122,7 +140,7 @@ install_go() {
             ;;
     esac
     
-    print_success "Go installed: $(go version | grep -oP 'go[0-9]+\.[0-9]+\.[0-9]+')"
+    print_success "Go installed: $(go version | sed -En 's/.*(go[0-9]+\.[0-9]+\.[0-9]+).*/\1/p')"
 }
 
 # ─────────────────────────────────────────────────────────────────────
@@ -132,7 +150,7 @@ install_docker() {
     print_step "Checking Docker installation..."
     
     if command -v docker &> /dev/null; then
-        DOCKER_VERSION=$(docker --version | grep -oP '[0-9]+\.[0-9]+' | head -1)
+        DOCKER_VERSION=$(docker --version | sed -En 's/.* ([0-9]+\.[0-9]+).*/\1/p' | head -1)
         if version_gte "$DOCKER_VERSION" "$DOCKER_MIN_VERSION"; then
             print_skip "Docker $DOCKER_VERSION already installed (>= $DOCKER_MIN_VERSION)"
             
@@ -197,7 +215,7 @@ install_docker() {
         fi
     fi
     
-    print_success "Docker installed: $(docker --version | grep -oP '[0-9]+\.[0-9]+\.[0-9]+')"
+    print_success "Docker installed: $(docker --version | sed -En 's/.* ([0-9]+\.[0-9]+\.[0-9]+).*/\1/p')"
 }
 
 # ─────────────────────────────────────────────────────────────────────
@@ -212,7 +230,7 @@ install_docker_compose() {
         print_skip "Docker Compose v$COMPOSE_VERSION already installed (plugin)"
         return 0
     elif command -v docker-compose &> /dev/null; then
-        COMPOSE_VERSION=$(docker-compose --version | grep -oP '[0-9]+\.[0-9]+' | head -1)
+        COMPOSE_VERSION=$(docker-compose --version | sed -En 's/.* ([0-9]+\.[0-9]+).*/\1/p' | head -1)
         print_skip "Docker Compose v$COMPOSE_VERSION already installed (standalone)"
         return 0
     else
@@ -246,7 +264,7 @@ install_git() {
     print_step "Checking Git installation..."
     
     if command -v git &> /dev/null; then
-        GIT_VERSION=$(git --version | grep -oP '[0-9]+\.[0-9]+' | head -1)
+        GIT_VERSION=$(git --version | sed -En 's/.* ([0-9]+\.[0-9]+).*/\1/p' | head -1)
         print_skip "Git $GIT_VERSION already installed"
         return 0
     fi
@@ -269,7 +287,7 @@ install_git() {
             ;;
     esac
     
-    print_success "Git installed: $(git --version | grep -oP '[0-9]+\.[0-9]+\.[0-9]+')"
+    print_success "Git installed: $(git --version | sed -En 's/.* ([0-9]+\.[0-9]+\.[0-9]+).*/\1/p')"
 }
 
 # ─────────────────────────────────────────────────────────────────────
@@ -378,6 +396,9 @@ main() {
     
     echo -e "${BLUE}Detected OS:${NC} $(detect_os)"
     echo ""
+    
+    # Mac specific checks
+    check_brew
     
     # Install dependencies
     install_git
