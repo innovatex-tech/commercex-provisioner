@@ -68,6 +68,7 @@ func NewProvisioner(config *Config, reg *registry.Store, dbProv *db.Provisioner)
 
 func (p *Provisioner) Create(req *CreateRequest) (*registry.Client, error) {
 	fmt.Printf("Creating client: %s\n", req.ClientID)
+	isRemote := req.ServerHost != ""
 
 	// 1. Validate
 	if err := p.validate(req); err != nil {
@@ -112,20 +113,28 @@ func (p *Provisioner) Create(req *CreateRequest) (*registry.Client, error) {
 	fmt.Println("✓ Storefront .env created")
 
 	// 7. Prepare template data
+	targetHost := req.Domain
+	if isRemote && req.ServerHost != "" {
+		targetHost = req.ServerHost
+	}
+
+	publicStorefrontURL := fmt.Sprintf("http://%s:%d", targetHost, storefrontPort)
+
 	templateData := map[string]interface{}{
-		"ClientID":       req.ClientID,
-		"Domain":         req.Domain,
-		"BrandName":      req.BrandName,
-		"DBName":         req.DBName,
-		"DBUsername":     req.DBUsername,
-		"DBPassword":     req.DBPassword,
-		"AdminUsername":  req.AdminUsername,
-		"AdminPassword":  req.AdminPassword,
-		"CookieSecret":   cookieSecret,
-		"AppPort":        appPort,
-		"PostgresPort":   postgresPort,
-		"StorefrontPort": storefrontPort,
-		"GeneratedAt":    time.Now().Format(time.RFC3339),
+		"ClientID":            req.ClientID,
+		"Domain":              req.Domain,
+		"BrandName":           req.BrandName,
+		"DBName":              req.DBName,
+		"DBUsername":          req.DBUsername,
+		"DBPassword":          req.DBPassword,
+		"AdminUsername":       req.AdminUsername,
+		"AdminPassword":       req.AdminPassword,
+		"CookieSecret":        cookieSecret,
+		"AppPort":             appPort,
+		"PostgresPort":        postgresPort,
+		"StorefrontPort":      storefrontPort,
+		"PublicStorefrontURL": publicStorefrontURL,
+		"GeneratedAt":         time.Now().Format(time.RFC3339),
 	}
 
 	// 8. Render .env file
@@ -145,7 +154,7 @@ func (p *Provisioner) Create(req *CreateRequest) (*registry.Client, error) {
 	fmt.Println("✓ Templates rendered (env, nginx, docker-compose)")
 
 	// 10. Deploy
-	isRemote := req.ServerHost != ""
+	isRemote = req.ServerHost != ""
 	if isRemote {
 		fmt.Printf("Deploying to remote server %s...\n", req.ServerHost)
 		ssh, err := deploy.NewSSHOrchestrator(req.ServerHost, req.ServerUser, req.SSHPassword, req.SSHKeyPath)
