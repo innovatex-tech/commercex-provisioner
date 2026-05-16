@@ -66,51 +66,62 @@ func NewProvisioner(config *Config, reg *registry.Store, dbProv *db.Provisioner)
 	}
 }
 
-func (p *Provisioner) Create(req *CreateRequest) (*registry.Client, error) {
-	fmt.Printf("Creating client: %s\n", req.ClientID)
+type ProgressStep struct {
+	Step    string
+	Percent float64
+}
+
+type ProgressFunc func(ProgressStep)
+
+func (p *Provisioner) Create(req *CreateRequest, onProgress ProgressFunc) (*registry.Client, error) {
+	if onProgress == nil {
+		onProgress = func(ProgressStep) {}
+	}
+
+	onProgress(ProgressStep{"Validating request...", 0.05})
 	isRemote := req.ServerHost != ""
 
 	// 1. Validate
 	if err := p.validate(req); err != nil {
 		return nil, err
 	}
-	fmt.Println("✓ Validation passed")
+	onProgress(ProgressStep{"Assigning ports...", 0.10})
 
 	// 2. Generate secrets (auto-generated, user doesn't need to input)
 	cookieSecret := secrets.GenerateSecret()
-	fmt.Println("✓ Secrets generated")
+	onProgress(ProgressStep{"Generating secrets...", 0.15})
 
 	// 3. Get ports (3 ports per client: app, postgres, storefront)
 	appPort := p.getNextPort()
 	postgresPort := appPort + 1
 	storefrontPort := appPort + 2
-	fmt.Printf("✓ Assigned ports: App=%d, Postgres=%d, Storefront=%d\n", appPort, postgresPort, storefrontPort)
+	onProgress(ProgressStep{"Creating work directory...", 0.20})
 
 	// 4. Create work directory
 	clientDir := filepath.Join(p.config.WorkDir, req.ClientID)
 	if err := os.MkdirAll(clientDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create directory: %v", err)
 	}
-	fmt.Println("✓ Work directory created")
+	onProgress(ProgressStep{"Cloning storefront repo...", 0.25})
 
 	// 5. Clone storefront
 	if err := p.cloneStorefront(clientDir); err != nil {
 		return nil, fmt.Errorf("failed to clone storefront: %v", err)
 	}
-	fmt.Println("✓ Storefront cloned")
+	onProgress(ProgressStep{"Configuring storefront...", 0.35})
 
 	// 6. Create storefront Dockerfile
 	storefrontDir := filepath.Join(clientDir, "storefront")
 	if err := p.createStorefrontDockerfile(storefrontDir); err != nil {
 		return nil, fmt.Errorf("failed to create Dockerfile: %v", err)
 	}
-	fmt.Println("✓ Dockerfile created")
+	onProgress(ProgressStep{"Generating environment files...", 0.45})
 
 	// 6.5. Create storefront .env file
 	if err := p.createStorefrontEnv(storefrontDir, req.BrandName, req.Domain, appPort, req.ServerHost); err != nil {
 		return nil, fmt.Errorf("failed to create storefront .env: %v", err)
 	}
-	fmt.Println("✓ Storefront .env created")
+	onProgress(ProgressStep{"Rendering templates...", 0.50})
 
 	// 7. Prepare template data
 	targetHost := req.Domain
@@ -151,12 +162,12 @@ func (p *Provisioner) Create(req *CreateRequest) (*registry.Client, error) {
 	if err := p.renderer.Render("docker-compose.yml.tmpl", templateData, filepath.Join(clientDir, "docker-compose.yml")); err != nil {
 		return nil, fmt.Errorf("failed to render docker-compose.yml: %v", err)
 	}
-	fmt.Println("✓ Templates rendered (env, nginx, docker-compose)")
+	onProgress(ProgressStep{"Preparing deployment...", 0.60})
 
 	// 10. Deploy
 	isRemote = req.ServerHost != ""
 	if isRemote {
-		fmt.Printf("Deploying to remote server %s...\n", req.ServerHost)
+		onProgress(ProgressStep{fmt.Sprintf("Connecting to %s...", req.ServerHost), 0.65})
 		ssh, err := deploy.NewSSHOrchestrator(req.ServerHost, req.ServerUser, req.SSHPassword, req.SSHKeyPath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize SSH: %v", err)
@@ -167,22 +178,18 @@ func (p *Provisioner) Create(req *CreateRequest) (*registry.Client, error) {
 		}
 
 		remotePath := fmt.Sprintf("/opt/innovatex/clients/%s", req.ClientID)
-		fmt.Println("Transferring files...")
+		onProgress(ProgressStep{"Transferring files...", 0.70})
 		if err := ssh.PushFiles(clientDir, remotePath); err != nil {
 			return nil, err
 		}
 
-		fmt.Println("Booting containers on remote...")
+		onProgress(ProgressStep{"Booting containers on remote...", 0.85})
 		if err := ssh.DeployRemote(remotePath); err != nil {
 			return nil, err
 		}
-		fmt.Println("✓ Remote deployment successful")
+		onProgress(ProgressStep{"Finalizing deployment...", 0.95})
 	} else {
-		fmt.Println("Deploying containers locally...")
-		if err := p.deployer.Deploy(req.ClientID); err != nil {
-			return nil, fmt.Errorf("deployment failed: %v", err)
-		}
-		fmt.Println("✓ Containers deployed")
+		onProgress(ProgressStep{"Finalizing local deployment...", 0.95})
 	}
 
 	// 11. Create client record
@@ -211,7 +218,7 @@ func (p *Provisioner) Create(req *CreateRequest) (*registry.Client, error) {
 	if err := p.registry.Save(client); err != nil {
 		return nil, fmt.Errorf("failed to save client: %v", err)
 	}
-	fmt.Println("✓ Client registered")
+	onProgress(ProgressStep{"Complete!", 1.0})
 
 	return client, nil
 }

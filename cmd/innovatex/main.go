@@ -333,46 +333,12 @@ func createCmd() *cobra.Command {
 				}
 			}
 
-			fmt.Println("\n🚀  PROVISIONING STARTING...")
-			client, err := prov.Create(&req)
-			if err != nil {
-				return err
+			// Start the animated provisioning TUI
+			pm := tui.NewProvisioningModel(prov, req)
+			prog := tea.NewProgram(pm, tea.WithAltScreen())
+			if _, err := prog.Run(); err != nil {
+				return fmt.Errorf("provisioning TUI failed: %v", err)
 			}
-
-			fmt.Println("\n╔══════════════════════════════════════════════════════════╗")
-			fmt.Println("║                                                          ║")
-			fmt.Println("║           ✅  DEPLOYMENT SUCCESSFUL!  ✅                ║")
-			fmt.Println("║                                                          ║")
-			fmt.Println("╚══════════════════════════════════════════════════════════╝")
-			fmt.Println()
-
-			// Client info box
-			fmt.Println("┌─ 📦 Client Information ─────────────────────────────────┐")
-			fmt.Printf("│  Client ID:    %-42s │\n", client.ID)
-			fmt.Printf("│  Brand:        %-42s │\n", client.BrandName)
-			fmt.Printf("│  Database:     %-42s │\n", client.DBName)
-			fmt.Println("└──────────────────────────────────────────────────────────┘")
-
-			// Access URLs
-			urlTarget := client.Domain
-			if client.IsRemote {
-				urlTarget = client.ServerHost
-			}
-
-			fmt.Println("\n┌─ 🌐 Access URLs ────────────────────────────────────────┐")
-			fmt.Printf("│  🛍️  Storefront:   http://%-29s │\n", fmt.Sprintf("%s:%d", urlTarget, client.StorefrontPort))
-			fmt.Printf("│  🔧 CommerceX:     http://%-29s │\n", fmt.Sprintf("%s:%d", urlTarget, client.AppPort))
-			fmt.Printf("│  🗄️  PostgreSQL:   %-38s │\n", fmt.Sprintf("%s:%d", urlTarget, client.PostgresPort))
-			fmt.Println("└──────────────────────────────────────────────────────────┘")
-
-			// Admin credentials box
-			fmt.Println("\n┌─ 🔐 Admin Credentials ──────────────────────────────────┐")
-			fmt.Printf("│  Username:     %-42s │\n", client.AdminUsername)
-			fmt.Printf("│  Password:     %-42s │\n", client.AdminPassword)
-			fmt.Println("└──────────────────────────────────────────────────────────┘")
-
-			fmt.Println("\n💡 Next Step: Run 'innovatex dashboard' to manage your new client.")
-			fmt.Println()
 
 			return nil
 		},

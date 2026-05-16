@@ -1,51 +1,51 @@
 package tui
 
-import "github.com/charmbracelet/lipgloss"
-
-// ─── Palette ─────────────────────────────────────────────────────────────────
-
-const (
-	colorPrimary   = lipgloss.Color("#7C3AED") // violet-600
-	colorAccent    = lipgloss.Color("#A78BFA") // violet-400
-	colorSuccess   = lipgloss.Color("#22C55E") // green-500
-	colorWarning   = lipgloss.Color("#F59E0B") // amber-500
-	colorDanger    = lipgloss.Color("#EF4444") // red-500
-	colorMuted     = lipgloss.Color("#6B7280") // gray-500
-	colorSubtle    = lipgloss.Color("#374151") // gray-700
-	colorBg        = lipgloss.Color("#111827") // gray-900
-	colorSurface   = lipgloss.Color("#1F2937") // gray-800
-	colorBorder    = lipgloss.Color("#374151") // gray-700
-	colorText      = lipgloss.Color("#F9FAFB") // gray-50
-	colorTextDim   = lipgloss.Color("#9CA3AF") // gray-400
+import (
+	"github.com/charmbracelet/lipgloss"
 )
 
-// ─── Base Styles ─────────────────────────────────────────────────────────────
+// ─── Palette (Claude/Modern inspired) ─────────────────────────────────────────
+
+const (
+	colorBg      = lipgloss.Color("#0F172A") // Slate 900
+	colorSurface = lipgloss.Color("#1E293B") // Slate 800
+	colorBorder  = lipgloss.Color("#334155") // Slate 700
+	colorText    = lipgloss.Color("#F8FAFC") // Slate 50
+	colorTextDim = lipgloss.Color("#64748B") // Slate 500
+	colorPrimary = lipgloss.Color("#C084FC") // Purple 400
+	colorAccent  = lipgloss.Color("#22D3EE") // Cyan 400
+	colorSuccess = lipgloss.Color("#4ADE80") // Green 400
+	colorDanger  = lipgloss.Color("#FB7185") // Rose 400
+	colorWarning = lipgloss.Color("#FBBF24") // Amber 400
+	colorMuted   = lipgloss.Color("#475569") // Slate 600
+)
+
+// ─── Shared Base Styles ───────────────────────────────────────────────────────
 
 var (
-	// App chrome
-	appStyle = lipgloss.NewStyle().
-			Background(colorBg)
+	boldStyle = lipgloss.NewStyle().Bold(true)
+	dimStyle  = lipgloss.NewStyle().Foreground(colorTextDim)
 
-	// Header bar
+	// App Chrome
 	headerStyle = lipgloss.NewStyle().
+			Foreground(colorBg).
+			Background(colorAccent).
+			Padding(0, 1).
 			Bold(true).
-			Foreground(colorText).
-			Background(colorPrimary).
-			Padding(0, 2)
+			MarginBottom(1)
 
 	headerTitleStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(colorText)
+				Foreground(colorBg).
+				Bold(true)
 
 	headerVersionStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#DDD6FE")).
+				Foreground(colorMuted).
 				Faint(true)
 
-	// Footer / help bar
 	footerStyle = lipgloss.NewStyle().
 			Foreground(colorTextDim).
-			Background(colorSurface).
-			Padding(0, 2)
+			Padding(0, 1).
+			MarginTop(1)
 
 	footerKeyStyle = lipgloss.NewStyle().
 			Foreground(colorAccent).
@@ -54,25 +54,47 @@ var (
 	footerDescStyle = lipgloss.NewStyle().
 			Foreground(colorTextDim)
 
-	// Section panels
-	panelStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(colorBorder).
-			Background(colorSurface).
-			Padding(0, 1)
-
-	panelFocusedStyle = lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(colorPrimary).
-				Background(colorSurface).
+	// Notifications
+	notifySuccessStyle = lipgloss.NewStyle().
+				Foreground(colorSuccess).
+				Bold(true).
 				Padding(0, 1)
 
+	notifyErrorStyle = lipgloss.NewStyle().
+				Foreground(colorDanger).
+				Bold(true).
+				Padding(0, 1)
+
+	// Panels & Boxes
+	panelStyle = lipgloss.NewStyle().
+			Border(lipgloss.NormalBorder(), false, false, false, true).
+			BorderForeground(colorBorder).
+			PaddingLeft(2)
+
+	panelFocusedStyle = lipgloss.NewStyle().
+				Border(lipgloss.NormalBorder(), false, false, false, true).
+				BorderForeground(colorPrimary).
+				PaddingLeft(2)
+
 	panelTitleStyle = lipgloss.NewStyle().
+			Foreground(colorPrimary).
 			Bold(true).
-			Foreground(colorAccent).
 			MarginBottom(1)
 
-	// Detail panel fields
+	// Table Styles
+	tableHeaderStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(colorAccent).
+				BorderStyle(lipgloss.NormalBorder()).
+				BorderBottom(true).
+				BorderForeground(colorBorder)
+
+	tableSelectedStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(colorText).
+				Background(colorSurface)
+
+	// Fields
 	fieldLabelStyle = lipgloss.NewStyle().
 			Foreground(colorTextDim).
 			Width(14)
@@ -84,95 +106,65 @@ var (
 			Foreground(colorAccent).
 			Underline(true)
 
-	// Table header
-	tableHeaderStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(colorAccent).
-				BorderStyle(lipgloss.NormalBorder()).
-				BorderBottom(true).
-				BorderForeground(colorBorder)
+	// Status Badges
+	statusRunningStyle = lipgloss.NewStyle().Foreground(colorSuccess).Bold(true)
+	statusStoppedStyle = lipgloss.NewStyle().Foreground(colorDanger).Bold(true)
+	statusBuildingStyle = lipgloss.NewStyle().Foreground(colorWarning).Bold(true)
+	statusUnknownStyle  = lipgloss.NewStyle().Foreground(colorMuted).Bold(true)
 
-	// Table selected row
-	tableSelectedStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(colorText).
-				Background(colorPrimary)
+	// Spinner
+	spinnerStyle = lipgloss.NewStyle().Foreground(colorAccent)
 
-	// Status badges
-	statusRunningStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(colorSuccess)
-
-	statusStoppedStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(colorDanger)
-
-	statusBuildingStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(colorWarning)
-
-	statusUnknownStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(colorMuted)
-
-	// Confirm dialog
+	// Dialogs
 	dialogStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(colorDanger).
-			Background(colorSurface).
-			Padding(1, 3).
-			Align(lipgloss.Center)
+			Padding(1, 2)
 
 	dialogTitleStyle = lipgloss.NewStyle().
-				Bold(true).
 				Foreground(colorDanger).
+				Bold(true).
 				MarginBottom(1)
 
-	// Logs view
+	// Logs View
 	logsHeaderStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(colorAccent).
-			Background(colorSurface).
 			Padding(0, 1)
 
 	logsStyle = lipgloss.NewStyle().
-			Foreground(colorTextDim).
-			Background(colorBg)
+			Foreground(colorTextDim)
 
-	// Notification / flash message
-	notifySuccessStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(colorSuccess).
-				Background(colorSurface).
-				Padding(0, 2)
-
-	notifyErrorStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(colorDanger).
-				Background(colorSurface).
-				Padding(0, 2)
-
-	notifyInfoStyle = lipgloss.NewStyle().
-			Foreground(colorTextDim).
-			Background(colorSurface).
-			Padding(0, 2)
-
-	// Spinner
-	spinnerStyle = lipgloss.NewStyle().
-			Foreground(colorPrimary)
-
-	// Empty state
+	// Empty State
 	emptyStyle = lipgloss.NewStyle().
-			Foreground(colorMuted).
+			Foreground(colorTextDim).
 			Italic(true).
 			Align(lipgloss.Center)
 
-	// Wizard specific
-	cursorStyle = lipgloss.NewStyle().Foreground(colorAccent)
-	helpStyle   = lipgloss.NewStyle().Foreground(colorTextDim)
+	// Wizard Specific
+	cursorStyle        = lipgloss.NewStyle().Foreground(colorAccent)
+	helpStyle          = lipgloss.NewStyle().Foreground(colorTextDim)
+	stepIndicatorStyle = lipgloss.NewStyle().Foreground(colorAccent).Bold(true).MarginRight(1)
+	labelStyle         = lipgloss.NewStyle().Foreground(colorPrimary).Bold(true).MarginRight(1)
+	containerStyle     = lipgloss.NewStyle().PaddingLeft(2).Border(lipgloss.NormalBorder(), false, false, false, true).BorderForeground(colorSurface)
+
+	// Progress Bar
+	progressBarWidth = 60
+	progressStyle    = lipgloss.NewStyle().Foreground(colorAccent)
+	progressFull     = lipgloss.Color("#22D3EE") // Cyan
+	progressEmpty    = lipgloss.Color("#334155") // Slate 700
+
+	stepTextStyle = lipgloss.NewStyle().
+			Foreground(colorText).
+			Italic(true).
+			MarginBottom(1)
 )
 
-// ─── Status Badge Helpers ─────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+func GetTitleStyle() lipgloss.Style   { return headerStyle }
+func GetErrorStyle() lipgloss.Style   { return notifyErrorStyle }
+func GetSuccessStyle() lipgloss.Style { return notifySuccessStyle }
 
 func statusBadge(status string) string {
 	switch status {

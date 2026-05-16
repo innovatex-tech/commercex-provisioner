@@ -42,17 +42,17 @@ func NewWizard() WizardModel {
 		t.CharLimit = 64
 
 		switch i {
-		case 0: t.Placeholder = "Client ID (slug, e.g. howlsan-store)"
-		case 1: t.Placeholder = "Domain (e.g. howlsan.com)"
-		case 2: t.Placeholder = "Brand Name (e.g. Howlsan)"
-		case 3: t.Placeholder = "DB Name"
-		case 4: t.Placeholder = "DB User"
-		case 5: t.Placeholder = "DB Password"; t.EchoMode = textinput.EchoPassword; t.EchoCharacter = '•'
-		case 6: t.Placeholder = "Admin User"
-		case 7: t.Placeholder = "Admin Password"; t.EchoMode = textinput.EchoPassword; t.EchoCharacter = '•'
-		case 8: t.Placeholder = "Remote Server (user@host) [Optional]"
-		case 9: t.Placeholder = "SSH Password (if no key)"; t.EchoMode = textinput.EchoPassword; t.EchoCharacter = '•'
-		case 10: t.Placeholder = "SSH Key Path (default ~/.ssh/id_rsa)"
+		case 0: t.Placeholder = "howlsan-store"
+		case 1: t.Placeholder = "howlsan.com"
+		case 2: t.Placeholder = "Howlsan"
+		case 3: t.Placeholder = "howlsanDB"
+		case 4: t.Placeholder = "howlsanUser"
+		case 5: t.Placeholder = "••••••••"; t.EchoMode = textinput.EchoPassword; t.EchoCharacter = '•'
+		case 6: t.Placeholder = "admin"
+		case 7: t.Placeholder = "••••••••"; t.EchoMode = textinput.EchoPassword; t.EchoCharacter = '•'
+		case 8: t.Placeholder = "root@45.147.46.225 (optional)"
+		case 9: t.Placeholder = "••••••••"; t.EchoMode = textinput.EchoPassword; t.EchoCharacter = '•'
+		case 10: t.Placeholder = "~/.ssh/id_rsa"
 		}
 		m.inputs[i] = t
 	}
@@ -109,9 +109,9 @@ func (m *WizardModel) nextInput() {
 	idx := m.activeInputIdx()
 	val := strings.TrimSpace(m.inputs[idx].Value())
 
-	// Simple validation: ID, Domain, Brand, DB, Admin are REQUIRED
-	if m.step != stepRemote && val == "" {
-		return // Don't proceed if empty
+	// Required fields check (steps 1-3)
+	if m.step < stepRemote && val == "" {
+		return
 	}
 
 	m.inputs[idx].Blur()
@@ -183,65 +183,77 @@ func (m WizardModel) activeInputIdx() int {
 func (m WizardModel) View() string {
 	if m.width == 0 { return "" }
 
+	var s strings.Builder
+
+	// Header
+	s.WriteString(headerStyle.Render(" INNOVATEX ") + " PROVISIONER\n\n")
+
 	var body string
 	switch m.step {
 	case stepClient:
-		body = m.renderForm("Step 1/4: Client Info", 0, 2)
+		body = m.renderForm("1. CLIENT IDENTITY", 0, 2)
 	case stepDatabase:
-		body = m.renderForm("Step 2/4: Database", 3, 5)
+		body = m.renderForm("2. DATABASE CONFIG", 3, 5)
 	case stepAdmin:
-		body = m.renderForm("Step 3/4: Admin User", 6, 7)
+		body = m.renderForm("3. ADMIN ACCOUNT", 6, 7)
 	case stepRemote:
-		body = m.renderForm("Step 4/4: Deployment", 8, 10)
+		body = m.renderForm("4. REMOTE TARGET", 8, 10)
 	case stepReview:
 		body = m.renderReview()
 	}
 
-	// Centered dialog
-	dialog := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(colorPrimary).
-		Padding(1, 4).
-		Width(64).
-		Render(body)
+	s.WriteString(containerStyle.Render(body))
+	s.WriteString("\n" + footerStyle.Render("tab: continue • esc: cancel • ctrl+c: quit"))
 
-	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, dialog)
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, s.String())
 }
 
 func (m WizardModel) renderForm(title string, start, end int) string {
 	var s strings.Builder
-	s.WriteString(lipgloss.NewStyle().Foreground(colorAccent).Bold(true).Render(title) + "\n\n")
+	s.WriteString(boldStyle.Foreground(colorPrimary).Render(title) + "\n\n")
 
-	for i := start; i <= end; i++ {
-		label := m.inputs[i].Placeholder
-		if m.inputs[i].Focused() {
-			s.WriteString(lipgloss.NewStyle().Foreground(colorAccent).Render("▸ ") + lipgloss.NewStyle().Bold(true).Render(label) + "\n")
-		} else {
-			s.WriteString("  " + lipgloss.NewStyle().Foreground(colorTextDim).Render(label) + "\n")
-		}
-		s.WriteString("  " + m.inputs[i].View() + "\n\n")
+	labels := []string{
+		"Client ID", "Domain", "Brand Name",
+		"DB Name", "DB User", "DB Password",
+		"Admin User", "Admin Password",
+		"Remote Host", "SSH Password", "SSH Key Path",
 	}
 
-	s.WriteString(helpStyle.Render("tab: next • esc: cancel"))
+	for i := start; i <= end; i++ {
+		label := labels[i]
+		if m.inputs[i].Focused() {
+			s.WriteString(stepIndicatorStyle.Render("▸") + labelStyle.Render(label) + "\n")
+			s.WriteString("  " + m.inputs[i].View() + "\n\n")
+		} else {
+			val := m.inputs[i].Value()
+			if val == "" {
+				val = m.inputs[i].Placeholder
+			} else if m.inputs[i].EchoMode == textinput.EchoPassword {
+				val = "••••••••"
+			}
+			s.WriteString("  " + dimStyle.Render(label) + "\n")
+			s.WriteString("  " + dimStyle.Render(val) + "\n\n")
+		}
+	}
+
 	return s.String()
 }
 
 func (m WizardModel) renderReview() string {
 	var s strings.Builder
-	s.WriteString(lipgloss.NewStyle().Foreground(colorSuccess).Bold(true).Render("Step 5: Review & Deploy") + "\n\n")
+	s.WriteString(boldStyle.Foreground(colorSuccess).Render("READY TO PROVISION") + "\n\n")
 	
-	s.WriteString(fmt.Sprintf("Client:   %s (%s)\n", m.inputs[0].Value(), m.inputs[2].Value()))
-	s.WriteString(fmt.Sprintf("Domain:   %s\n", m.inputs[1].Value()))
+	s.WriteString(fmt.Sprintf("  %-12s %s\n", dimStyle.Render("Client"), boldStyle.Render(m.inputs[0].Value())))
+	s.WriteString(fmt.Sprintf("  %-12s %s\n", dimStyle.Render("Domain"), m.inputs[1].Value()))
 	
 	server := m.inputs[8].Value()
 	if server == "" {
-		s.WriteString("Target:   Local Machine\n")
+		s.WriteString(fmt.Sprintf("  %-12s %s\n", dimStyle.Render("Target"), "Local Machine"))
 	} else {
-		s.WriteString(fmt.Sprintf("Target:   Remote (%s)\n", server))
+		s.WriteString(fmt.Sprintf("  %-12s %s\n", dimStyle.Render("Target"), lipgloss.NewStyle().Foreground(colorAccent).Render(server)))
 	}
 
-	s.WriteString("\n" + lipgloss.NewStyle().Background(colorSuccess).Foreground(colorBg).Padding(0, 1).Render(" ENTER ") + " to start provisioning")
-	s.WriteString("\n" + helpStyle.Render("esc: cancel"))
+	s.WriteString("\n" + boldStyle.Foreground(colorAccent).Render("Press ENTER to begin deployment"))
 	return s.String()
 }
 
