@@ -323,6 +323,41 @@ configure_path() {
 }
 
 # ─────────────────────────────────────────────────────────────────────
+# Configure Autocompletion
+# ─────────────────────────────────────────────────────────────────────
+configure_completion() {
+    print_step "Configuring autocompletion..."
+    
+    SHELL_NAME=$(basename "$SHELL")
+    SHELL_RC=""
+    
+    case $SHELL_NAME in
+        zsh)  SHELL_RC="$HOME/.zshrc" ;;
+        bash) SHELL_RC="$HOME/.bashrc" ;;
+        *)    print_skip "Autocompletion not supported for $SHELL_NAME"; return 0 ;;
+    esac
+
+    # Add completion sourcing
+    if ! grep -q 'innovatex completion' "$SHELL_RC" 2>/dev/null; then
+        echo "" >> "$SHELL_RC"
+        echo "# InnovateX Autocompletion" >> "$SHELL_RC"
+        
+        if [ "$SHELL_NAME" = "zsh" ]; then
+            # Ensure compinit is loaded for Zsh
+            if ! grep -q 'compinit' "$SHELL_RC" 2>/dev/null; then
+                echo 'autoload -Uz compinit && compinit' >> "$SHELL_RC"
+            fi
+            echo 'source <(innovatex completion zsh)' >> "$SHELL_RC"
+        else
+            echo 'source <(innovatex completion bash)' >> "$SHELL_RC"
+        fi
+        print_success "Added autocompletion to $SHELL_RC"
+    else
+        print_skip "Autocompletion already configured in $SHELL_RC"
+    fi
+}
+
+# ─────────────────────────────────────────────────────────────────────
 # Create data directories
 # ─────────────────────────────────────────────────────────────────────
 create_directories() {
@@ -358,6 +393,8 @@ main() {
     install_innovatex
     echo ""
     configure_path
+    echo ""
+    configure_completion
     echo ""
     create_directories
     
