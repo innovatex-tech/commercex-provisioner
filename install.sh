@@ -384,8 +384,16 @@ create_directories() {
     mkdir -p "$HOME/.innovatex/clients"
     mkdir -p "$HOME/.innovatex/templates"
     
+    # Download templates from the repo
+    print_step "Downloading deployment templates..."
+    REPO_URL="https://raw.githubusercontent.com/innovatex-tech/commercex-provisioner/main/templates"
+    
+    curl -fsSL "$REPO_URL/docker-compose.yml.tmpl" -o "$HOME/.innovatex/templates/docker-compose.yml.tmpl"
+    curl -fsSL "$REPO_URL/.env.tmpl" -o "$HOME/.innovatex/templates/.env.tmpl"
+    curl -fsSL "$REPO_URL/nginx.conf.tmpl" -o "$HOME/.innovatex/templates/nginx.conf.tmpl"
+    
     print_success "Created ~/.innovatex/clients/"
-    print_success "Created ~/.innovatex/templates/"
+    print_success "Installed templates to ~/.innovatex/templates/"
 }
 
 # ─────────────────────────────────────────────────────────────────────
