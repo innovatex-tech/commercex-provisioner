@@ -28,6 +28,12 @@ type CreateRequest struct {
 	// Admin (user provides)
 	AdminUsername string
 	AdminPassword string
+
+	// Remote Server (optional)
+	ServerHost  string
+	ServerUser  string
+	SSHPassword string
+	SSHKeyPath  string
 }
 
 type Config struct {
@@ -100,7 +106,7 @@ func (p *Provisioner) Create(req *CreateRequest) (*registry.Client, error) {
 	fmt.Println("✓ Dockerfile created")
 
 	// 6.5. Create storefront .env file
-	if err := p.createStorefrontEnv(storefrontDir, req.BrandName, req.Domain, appPort); err != nil {
+	if err := p.createStorefrontEnv(storefrontDir, req.BrandName, req.Domain, appPort, req.ServerHost); err != nil {
 		return nil, fmt.Errorf("failed to create storefront .env: %v", err)
 	}
 	fmt.Println("✓ Storefront .env created")
@@ -139,11 +145,36 @@ func (p *Provisioner) Create(req *CreateRequest) (*registry.Client, error) {
 	fmt.Println("✓ Templates rendered (env, nginx, docker-compose)")
 
 	// 10. Deploy
-	fmt.Println("Deploying containers...")
-	if err := p.deployer.Deploy(req.ClientID); err != nil {
-		return nil, fmt.Errorf("deployment failed: %v", err)
+	isRemote := req.ServerHost != ""
+	if isRemote {
+		fmt.Printf("Deploying to remote server %s...\n", req.ServerHost)
+		ssh, err := deploy.NewSSHOrchestrator(req.ServerHost, req.ServerUser, req.SSHPassword, req.SSHKeyPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize SSH: %v", err)
+		}
+
+		if err := ssh.CheckPrerequisites(); err != nil {
+			return nil, err
+		}
+
+		remotePath := fmt.Sprintf("/opt/innovatex/clients/%s", req.ClientID)
+		fmt.Println("Transferring files...")
+		if err := ssh.PushFiles(clientDir, remotePath); err != nil {
+			return nil, err
+		}
+
+		fmt.Println("Booting containers on remote...")
+		if err := ssh.DeployRemote(remotePath); err != nil {
+			return nil, err
+		}
+		fmt.Println("✓ Remote deployment successful")
+	} else {
+		fmt.Println("Deploying containers locally...")
+		if err := p.deployer.Deploy(req.ClientID); err != nil {
+			return nil, fmt.Errorf("deployment failed: %v", err)
+		}
+		fmt.Println("✓ Containers deployed")
 	}
-	fmt.Println("✓ Containers deployed")
 
 	// 11. Create client record
 	client := &registry.Client{
@@ -160,6 +191,11 @@ func (p *Provisioner) Create(req *CreateRequest) (*registry.Client, error) {
 		AppPort:        appPort,
 		PostgresPort:   postgresPort,
 		StorefrontPort: storefrontPort,
+		IsRemote:       isRemote,
+		ServerHost:     req.ServerHost,
+		ServerUser:     req.ServerUser,
+		SSHPassword:    req.SSHPassword,
+		SSHKeyPath:     req.SSHKeyPath,
 		CreatedAt:      time.Now(),
 	}
 
@@ -171,7 +207,7 @@ func (p *Provisioner) Create(req *CreateRequest) (*registry.Client, error) {
 	return client, nil
 }
 
-func (p *Provisioner) Delete(clientID string) error {
+func (p *Provisioner) Delete(clientID string, purge bool) error {
 	fmt.Printf("Deleting client: %s\n", clientID)
 
 	// 1. Get client
@@ -180,16 +216,36 @@ func (p *Provisioner) Delete(clientID string) error {
 		return err
 	}
 
-	// 2. Stop and remove containers
-	fmt.Println("Removing containers...")
-	if err := p.deployer.Remove(clientID); err != nil {
-		fmt.Printf("Warning: Failed to remove containers: %v\n", err)
-	}
+	// 2. Stop and remove containers + data
+	if client.IsRemote {
+		fmt.Printf("Cleaning up remote server %s...\n", client.ServerHost)
+		ssh, err := deploy.NewSSHOrchestrator(client.ServerHost, client.ServerUser, client.SSHPassword, client.SSHKeyPath)
+		if err != nil {
+			return fmt.Errorf("failed to connect to remote for cleanup: %v", err)
+		}
+		defer ssh.Close()
 
-	// 3. Remove work directory
-	clientDir := filepath.Join(p.config.WorkDir, clientID)
-	if err := os.RemoveAll(clientDir); err != nil {
-		fmt.Printf("Warning: Failed to remove directory: %v\n", err)
+		remotePath := fmt.Sprintf("/opt/innovatex/clients/%s", clientID)
+		if purge {
+			fmt.Println("Purging remote containers and volumes (database)...")
+			ssh.RunCommand(fmt.Sprintf("cd %s && docker compose down -v", remotePath))
+			fmt.Println("Removing remote directory...")
+			ssh.RunCommand(fmt.Sprintf("rm -rf %s", remotePath))
+		} else {
+			fmt.Println("Stopping remote containers...")
+			ssh.RunCommand(fmt.Sprintf("cd %s && docker compose stop", remotePath))
+		}
+	} else {
+		fmt.Println("Removing local containers...")
+		if err := p.deployer.Remove(clientID); err != nil {
+			fmt.Printf("Warning: Failed to remove containers: %v\n", err)
+		}
+		
+		clientDir := filepath.Join(p.config.WorkDir, clientID)
+		if purge {
+			fmt.Println("Removing local directory and data...")
+			os.RemoveAll(clientDir)
+		}
 	}
 
 	// 4. Remove from registry
@@ -197,7 +253,11 @@ func (p *Provisioner) Delete(clientID string) error {
 		return err
 	}
 
-	fmt.Printf("✓ Client %s deleted (DB: %s preserved)\n", clientID, client.DBName)
+	if purge {
+		fmt.Printf("✓ Client %s and all data purged\n", clientID)
+	} else {
+		fmt.Printf("✓ Client %s removed from registry (server files preserved)\n", clientID)
+	}
 	return nil
 }
 
@@ -226,41 +286,46 @@ func (p *Provisioner) getNextPort() int {
 	return p.config.BasePort + (len(clients) * 3) // 3 ports per client: app, postgres, storefront
 }
 
-// Add this function to provisioner.go
 func (p *Provisioner) createStorefrontDockerfile(storefrontDir string) error {
 	dockerfile := `FROM node:20 AS builder
-
 WORKDIR /app
-
 COPY package.json ./
 RUN rm -f package-lock.json && npm install
-
 COPY . .
 RUN npm run build
 
-# Production stage - serve with nginx
 FROM nginx:alpine
+# SPA Routing: redirect all 404s to index.html
+RUN echo 'server { \
+    listen 80; \
+    location / { \
+        root /usr/share/nginx/html; \
+        index index.html index.htm; \
+        try_files $uri $uri/ /index.html; \
+    } \
+}' > /etc/nginx/conf.d/default.conf
+
 COPY --from=builder /app/dist /usr/share/nginx/html
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
 `
-
 	return os.WriteFile(filepath.Join(storefrontDir, "Dockerfile"), []byte(dockerfile), 0644)
 }
 
-// createStorefrontEnv creates the .env file for the React/Vite storefront
-// Automatically detects local vs production based on domain:
-// - localhost or *.local -> uses localhost (for local development)
-// - anything else -> uses the domain (for production)
-func (p *Provisioner) createStorefrontEnv(storefrontDir, brandName, domain string, appPort int) error {
+func (p *Provisioner) createStorefrontEnv(storefrontDir, brandName, domain string, appPort int, serverHost string) error {
 	var apiURL string
 
-	// Auto-detect: if domain is localhost or ends with .local, use localhost
+	// If it's a remote deployment and we have a serverHost, use the Host (IP) for now
+	// This ensures the site works even if the domain DNS hasn't propagated yet.
+	target := domain
+	if serverHost != "" {
+		target = serverHost
+	}
+
 	if domain == "localhost" || strings.HasSuffix(domain, ".local") {
 		apiURL = fmt.Sprintf("http://localhost:%d/shop-api", appPort)
 	} else {
-		// Production: use the actual domain
-		apiURL = fmt.Sprintf("http://%s:%d/shop-api", domain, appPort)
+		apiURL = fmt.Sprintf("http://%s:%d/shop-api", target, appPort)
 	}
 
 	envContent := fmt.Sprintf(`# API Configuration

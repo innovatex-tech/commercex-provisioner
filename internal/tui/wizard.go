@@ -1,0 +1,278 @@
+package tui
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/charmbracelet/bubbles/textinput"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/innovatex-tech/commercex-provisioner/internal/core"
+)
+
+type wizardStep int
+
+const (
+	stepClient wizardStep = iota
+	stepDatabase
+	stepAdmin
+	stepRemote
+	stepReview
+)
+
+type WizardModel struct {
+	step      wizardStep
+	inputs    []textinput.Model
+	quitting  bool
+	confirmed bool
+
+	width  int
+	height int
+}
+
+func NewWizard() WizardModel {
+	m := WizardModel{
+		step:   stepClient,
+		inputs: make([]textinput.Model, 11),
+	}
+
+	for i := range m.inputs {
+		t := textinput.New()
+		t.Cursor.Style = cursorStyle
+		t.CharLimit = 64
+
+		switch i {
+		case 0: t.Placeholder = "Client ID (slug, e.g. howlsan-store)"
+		case 1: t.Placeholder = "Domain (e.g. howlsan.com)"
+		case 2: t.Placeholder = "Brand Name (e.g. Howlsan)"
+		case 3: t.Placeholder = "DB Name"
+		case 4: t.Placeholder = "DB User"
+		case 5: t.Placeholder = "DB Password"; t.EchoMode = textinput.EchoPassword; t.EchoCharacter = '•'
+		case 6: t.Placeholder = "Admin User"
+		case 7: t.Placeholder = "Admin Password"; t.EchoMode = textinput.EchoPassword; t.EchoCharacter = '•'
+		case 8: t.Placeholder = "Remote Server (user@host) [Optional]"
+		case 9: t.Placeholder = "SSH Password (if no key)"; t.EchoMode = textinput.EchoPassword; t.EchoCharacter = '•'
+		case 10: t.Placeholder = "SSH Key Path (default ~/.ssh/id_rsa)"
+		}
+		m.inputs[i] = t
+	}
+
+	m.inputs[0].Focus()
+	return m
+}
+
+func (m WizardModel) Init() tea.Cmd {
+	return textinput.Blink
+}
+
+func (m WizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c", "esc":
+			m.quitting = true
+			return m, tea.Quit
+
+		case "enter":
+			if m.step == stepReview {
+				m.confirmed = true
+				return m, tea.Quit
+			}
+			m.nextInput()
+			return m, nil
+
+		case "tab":
+			m.nextInput()
+			return m, nil
+
+		case "shift+tab", "up":
+			m.prevInput()
+			return m, nil
+		}
+	}
+
+	// Update active input
+	var cmd tea.Cmd
+	idx := m.activeInputIdx()
+	if idx >= 0 && idx < len(m.inputs) {
+		m.inputs[idx], cmd = m.inputs[idx].Update(msg)
+	}
+
+	return m, cmd
+}
+
+func (m *WizardModel) nextInput() {
+	idx := m.activeInputIdx()
+	val := strings.TrimSpace(m.inputs[idx].Value())
+
+	// Simple validation: ID, Domain, Brand, DB, Admin are REQUIRED
+	if m.step != stepRemote && val == "" {
+		return // Don't proceed if empty
+	}
+
+	m.inputs[idx].Blur()
+
+	switch m.step {
+	case stepClient:
+		if idx < 2 {
+			idx++
+		} else {
+			m.step = stepDatabase
+			idx = 3
+		}
+	case stepDatabase:
+		if idx < 5 {
+			idx++
+		} else {
+			m.step = stepAdmin
+			idx = 6
+		}
+	case stepAdmin:
+		if idx < 7 {
+			idx++
+		} else {
+			m.step = stepRemote
+			idx = 8
+		}
+	case stepRemote:
+		if idx < 10 {
+			idx++
+		} else {
+			m.step = stepReview
+			return
+		}
+	}
+
+	m.inputs[idx].Focus()
+}
+
+func (m *WizardModel) prevInput() {
+	idx := m.activeInputIdx()
+	m.inputs[idx].Blur()
+
+	switch m.step {
+	case stepClient:
+		if idx > 0 { idx-- }
+	case stepDatabase:
+		if idx > 3 { idx-- } else { m.step = stepClient; idx = 2 }
+	case stepAdmin:
+		if idx > 6 { idx-- } else { m.step = stepDatabase; idx = 5 }
+	case stepRemote:
+		if idx > 8 { idx-- } else { m.step = stepAdmin; idx = 7 }
+	case stepReview:
+		m.step = stepRemote
+		idx = 10
+	}
+
+	m.inputs[idx].Focus()
+}
+
+func (m WizardModel) activeInputIdx() int {
+	for i, t := range m.inputs {
+		if t.Focused() {
+			return i
+		}
+	}
+	return 0
+}
+
+func (m WizardModel) View() string {
+	if m.width == 0 { return "" }
+
+	var body string
+	switch m.step {
+	case stepClient:
+		body = m.renderForm("Step 1/4: Client Info", 0, 2)
+	case stepDatabase:
+		body = m.renderForm("Step 2/4: Database", 3, 5)
+	case stepAdmin:
+		body = m.renderForm("Step 3/4: Admin User", 6, 7)
+	case stepRemote:
+		body = m.renderForm("Step 4/4: Deployment", 8, 10)
+	case stepReview:
+		body = m.renderReview()
+	}
+
+	// Centered dialog
+	dialog := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorPrimary).
+		Padding(1, 4).
+		Width(64).
+		Render(body)
+
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, dialog)
+}
+
+func (m WizardModel) renderForm(title string, start, end int) string {
+	var s strings.Builder
+	s.WriteString(lipgloss.NewStyle().Foreground(colorAccent).Bold(true).Render(title) + "\n\n")
+
+	for i := start; i <= end; i++ {
+		label := m.inputs[i].Placeholder
+		if m.inputs[i].Focused() {
+			s.WriteString(lipgloss.NewStyle().Foreground(colorAccent).Render("▸ ") + lipgloss.NewStyle().Bold(true).Render(label) + "\n")
+		} else {
+			s.WriteString("  " + lipgloss.NewStyle().Foreground(colorTextDim).Render(label) + "\n")
+		}
+		s.WriteString("  " + m.inputs[i].View() + "\n\n")
+	}
+
+	s.WriteString(helpStyle.Render("tab: next • esc: cancel"))
+	return s.String()
+}
+
+func (m WizardModel) renderReview() string {
+	var s strings.Builder
+	s.WriteString(lipgloss.NewStyle().Foreground(colorSuccess).Bold(true).Render("Step 5: Review & Deploy") + "\n\n")
+	
+	s.WriteString(fmt.Sprintf("Client:   %s (%s)\n", m.inputs[0].Value(), m.inputs[2].Value()))
+	s.WriteString(fmt.Sprintf("Domain:   %s\n", m.inputs[1].Value()))
+	
+	server := m.inputs[8].Value()
+	if server == "" {
+		s.WriteString("Target:   Local Machine\n")
+	} else {
+		s.WriteString(fmt.Sprintf("Target:   Remote (%s)\n", server))
+	}
+
+	s.WriteString("\n" + lipgloss.NewStyle().Background(colorSuccess).Foreground(colorBg).Padding(0, 1).Render(" ENTER ") + " to start provisioning")
+	s.WriteString("\n" + helpStyle.Render("esc: cancel"))
+	return s.String()
+}
+
+func (m WizardModel) GetRequest() (core.CreateRequest, bool) {
+	if m.quitting || !m.confirmed {
+		return core.CreateRequest{}, false
+	}
+
+	server := m.inputs[8].Value()
+	var user, host string
+	if server != "" {
+		parts := strings.Split(server, "@")
+		if len(parts) == 2 {
+			user, host = parts[0], parts[1]
+		} else {
+			user, host = "root", server
+		}
+	}
+
+	return core.CreateRequest{
+		ClientID:      m.inputs[0].Value(),
+		Domain:        m.inputs[1].Value(),
+		BrandName:     m.inputs[2].Value(),
+		DBName:        m.inputs[3].Value(),
+		DBUsername:    m.inputs[4].Value(),
+		DBPassword:    m.inputs[5].Value(),
+		AdminUsername: m.inputs[6].Value(),
+		AdminPassword: m.inputs[7].Value(),
+		ServerHost:    host,
+		ServerUser:    user,
+		SSHPassword:   m.inputs[9].Value(),
+		SSHKeyPath:    m.inputs[10].Value(),
+	}, true
+}

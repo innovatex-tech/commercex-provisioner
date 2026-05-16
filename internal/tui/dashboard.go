@@ -142,8 +142,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}:
 		m.clients = msg.clients
 		m.rebuildTable()
-		if len(msg.ids) > 0 {
-			cmds = append(cmds, refreshStatusCmd(msg.ids))
+		if len(m.clients) > 0 {
+			cmds = append(cmds, refreshStatusCmd(m.clients))
 		}
 		return m, tea.Batch(cmds...)
 
@@ -156,11 +156,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// ── Periodic tick → trigger refresh ──────────────────────────────────────
 	case tickMsg:
-		ids := m.clientIDs()
 		cmds = append(cmds, tickCmd())
-		if len(ids) > 0 {
+		if len(m.clients) > 0 {
 			m.loading = true
-			cmds = append(cmds, refreshStatusCmd(ids))
+			cmds = append(cmds, refreshStatusCmd(m.clients))
 		}
 		return m, tea.Batch(cmds...)
 
@@ -189,9 +188,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		// Refresh after action
-		ids := m.clientIDs()
-		if len(ids) > 0 {
-			cmds = append(cmds, refreshStatusCmd(ids))
+		if len(m.clients) > 0 {
+			cmds = append(cmds, refreshStatusCmd(m.clients))
 		}
 		return m, tea.Batch(cmds...)
 
@@ -253,10 +251,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.syncSelected()
 			if m.selected != nil {
 				cs := m.dockerStatus[m.selected.ID]
-				if cs.AllStopped() || len(cs.Containers) == 0 {
+				if cs.AllStopped() {
 					m.loading = true
 					m.notify(fmt.Sprintf("Starting %s...", m.selected.ID), false)
-					cmds = append(cmds, startClientCmd(m.workDir, m.selected.ID))
+					cmds = append(cmds, startClientCmd(m.workDir, m.selected) )
 				} else {
 					m.activeView = confirmView
 					m.confirmAct = confirmStop
@@ -276,13 +274,12 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.activeView = logsView
 				m.logContent = "Fetching logs...\n"
 				m.rebuildViewport()
-				cmds = append(cmds, streamLogsCmd(nil, m.workDir, m.selected.ID, ""))
+				cmds = append(cmds, streamLogsCmd(m.workDir, m.selected, ""))
 			}
 
 		case key.Matches(msg, keys.Refresh):
-			ids := m.clientIDs()
 			m.loading = true
-			cmds = append(cmds, refreshStatusCmd(ids))
+			cmds = append(cmds, refreshStatusCmd(m.clients))
 		}
 
 	// ─── Detail View ──────────────────────────────────────────────────────────
@@ -294,10 +291,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, keys.Toggle):
 			if m.selected != nil {
 				cs := m.dockerStatus[m.selected.ID]
-				if cs.AllStopped() || len(cs.Containers) == 0 {
+				if cs.AllStopped() {
 					m.loading = true
 					m.notify(fmt.Sprintf("Starting %s...", m.selected.ID), false)
-					cmds = append(cmds, startClientCmd(m.workDir, m.selected.ID))
+					cmds = append(cmds, startClientCmd(m.workDir, m.selected))
 				} else {
 					m.activeView = confirmView
 					m.confirmAct = confirmStop
@@ -315,12 +312,12 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.activeView = logsView
 				m.logContent = "Fetching logs...\n"
 				m.rebuildViewport()
-				cmds = append(cmds, streamLogsCmd(nil, m.workDir, m.selected.ID, ""))
+				cmds = append(cmds, streamLogsCmd(m.workDir, m.selected, ""))
 			}
 
 		case key.Matches(msg, keys.Refresh):
 			m.loading = true
-			cmds = append(cmds, refreshStatusCmd(m.clientIDs()))
+			cmds = append(cmds, refreshStatusCmd(m.clients))
 
 		default:
 			var cmd tea.Cmd
@@ -348,14 +345,14 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				case confirmDelete:
 					m.loading = true
 					m.activeView = listView
-					cmds = append(cmds, deleteClientCmd(m.workDir, m.selected.ID))
+					cmds = append(cmds, deleteClientCmd(m.workDir, m.selected))
 					// Also remove from registry
 					m.reg.Delete(m.selected.ID)
 				case confirmStop:
 					m.loading = true
 					m.activeView = listView
 					m.notify(fmt.Sprintf("Stopping %s...", m.selected.ID), false)
-					cmds = append(cmds, stopClientCmd(m.workDir, m.selected.ID))
+					cmds = append(cmds, stopClientCmd(m.workDir, m.selected))
 				}
 			}
 		case key.Matches(msg, keys.Cancel):
@@ -502,16 +499,27 @@ func (m Model) renderDetailPanel(width, height int) string {
 		domainDisplay = "localhost"
 	}
 
+	serverDisplay := "Local Machine"
+	if c.IsRemote {
+		serverDisplay = fmt.Sprintf("%s@%s", c.ServerUser, c.ServerHost)
+	}
+
 	// ── Header ──
 	title := panelTitleStyle.Render("  " + c.ID)
 	brand := fieldLabelStyle.Render("Brand") + fieldValueStyle.Render(c.BrandName)
+	server := fieldLabelStyle.Render("Server") + fieldValueStyle.Render(serverDisplay)
 	created := fieldLabelStyle.Render("Created") + fieldValueStyle.Render(c.CreatedAt.Format("2006-01-02 15:04"))
 
 	// ── URLs ──
+	urlTarget := domainDisplay
+	if c.IsRemote {
+		urlTarget = c.ServerHost
+	}
+
 	sectionURLs := fieldLabelStyle.Foreground(colorAccent).Bold(true).Render("\n  URLs")
-	sfURL := fieldLabelStyle.Render("  Storefront") + fieldURLStyle.Render(fmt.Sprintf("http://%s:%d", domainDisplay, c.StorefrontPort))
-	apiURL := fieldLabelStyle.Render("  CommerceX") + fieldURLStyle.Render(fmt.Sprintf("http://%s:%d", domainDisplay, c.AppPort))
-	pgURL := fieldLabelStyle.Render("  PostgreSQL") + fieldValueStyle.Render(fmt.Sprintf("%s:%d", domainDisplay, c.PostgresPort))
+	sfURL := fieldLabelStyle.Render("  Storefront") + fieldURLStyle.Render(fmt.Sprintf("http://%s:%d", urlTarget, c.StorefrontPort))
+	apiURL := fieldLabelStyle.Render("  CommerceX") + fieldURLStyle.Render(fmt.Sprintf("http://%s:%d", urlTarget, c.AppPort))
+	pgURL := fieldLabelStyle.Render("  PostgreSQL") + fieldValueStyle.Render(fmt.Sprintf("%s:%d", urlTarget, c.PostgresPort))
 
 	// ── Credentials ──
 	sectionCreds := fieldLabelStyle.Foreground(colorAccent).Bold(true).Render("\n  Credentials")
@@ -543,6 +551,7 @@ func (m Model) renderDetailPanel(width, height int) string {
 	rows := []string{
 		title,
 		brand,
+		server,
 		created,
 		sectionURLs,
 		sfURL,

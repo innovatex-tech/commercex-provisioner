@@ -25,5 +25,12 @@ type Client struct {
 	PostgresPort   int `json:"postgres_port"`
 	StorefrontPort int `json:"storefront_port"`
 
+	// Remote Server
+	IsRemote    bool   `json:"is_remote"`
+	ServerHost  string `json:"server_host,omitempty"`
+	ServerUser  string `json:"server_user,omitempty"`
+	SSHPassword string `json:"ssh_password,omitempty"`
+	SSHKeyPath  string `json:"ssh_key_path,omitempty"`
+
 	CreatedAt time.Time `json:"created_at"`
 }

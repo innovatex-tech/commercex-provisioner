@@ -3,162 +3,131 @@ package tui
 import (
 	"encoding/json"
 	"fmt"
-	"os/exec"
 	"strings"
+	"sync"
+
+	"github.com/innovatex-tech/commercex-provisioner/internal/deploy"
+	"github.com/innovatex-tech/commercex-provisioner/internal/registry"
 )
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-// ContainerInfo holds the parsed status of a single container.
-type ContainerInfo struct {
-	Name   string
+// ClientStatus holds the live Docker state for all containers of one client.
+type ClientStatus struct {
+	ClientID   string
+	Containers map[string]ContainerState // key = service name
+	Error      error
+}
+
+// ContainerState holds the parsed status of a single container.
+type ContainerState struct {
+	ID     string
 	State  string // running, exited, restarting, etc.
 	Status string // human: "Up 2 hours", "Exited (1) 5 minutes ago"
 }
 
-// ClientStatus holds the live Docker state for all containers of one client.
-type ClientStatus struct {
-	ClientID   string
-	Containers map[string]ContainerInfo // key = service name
-	Error      error
-}
-
-// AllRunning returns true if all 4 expected containers are running/healthy.
-func (cs ClientStatus) AllRunning() bool {
-	services := []string{"commercex-server", "commercex-worker", "postgres", "storefront"}
-	for _, svc := range services {
-		c, ok := cs.Containers[svc]
-		if !ok || (c.State != "running" && c.State != "healthy") {
-			return false
-		}
-	}
-	return true
-}
-
-// AllStopped returns true if no containers are running.
-func (cs ClientStatus) AllStopped() bool {
-	for _, c := range cs.Containers {
-		if c.State == "running" || c.State == "restarting" {
-			return false
-		}
-	}
-	return true
-}
-
-// HasBuilding returns true if any container is restarting or in a transient state.
-func (cs ClientStatus) HasBuilding() bool {
-	for _, c := range cs.Containers {
-		if c.State == "restarting" || c.State == "starting" {
-			return true
-		}
-	}
-	return false
-}
-
-// ServiceState returns the state string for a given service name,
-// checking both exact and prefixed names (e.g. "postgres_clientID").
-func (cs ClientStatus) ServiceState(service string) string {
-	// Direct match first
-	if c, ok := cs.Containers[service]; ok {
-		return c.State
-	}
-	// Fuzzy match by prefix (docker compose names services as service_clientID)
-	for name, c := range cs.Containers {
-		if strings.HasPrefix(name, service) {
-			return c.State
-		}
-	}
-	return "not found"
-}
-
-// ─── Docker Inspect Types ─────────────────────────────────────────────────────
-
-type dockerPsEntry struct {
-	Names  string `json:"Names"`
-	State  string `json:"State"`
-	Status string `json:"Status"`
-}
-
 // ─── Polling ──────────────────────────────────────────────────────────────────
 
-// FetchClientStatus queries `docker ps -a` and returns the status of all
-// containers belonging to the given clientID.
-func FetchClientStatus(clientID string) ClientStatus {
-	cs := ClientStatus{
-		ClientID:   clientID,
-		Containers: make(map[string]ContainerInfo),
+// FetchAllStatuses gathers Docker info for all clients concurrently.
+func FetchAllStatuses(clients []*registry.Client) map[string]ClientStatus {
+	var wg sync.WaitGroup
+	results := make(map[string]ClientStatus)
+	var mu sync.Mutex
+
+	for _, c := range clients {
+		wg.Add(1)
+		go func(client *registry.Client) {
+			defer wg.Done()
+			status := FetchStatus(client)
+			mu.Lock()
+			results[client.ID] = status
+			mu.Unlock()
+		}(c)
 	}
 
-	// Filter containers whose names contain the clientID
-	filter := fmt.Sprintf("name=%s", clientID)
-	cmd := exec.Command("docker", "ps", "-a",
-		"--filter", filter,
-		"--format", `{"Names":"{{.Names}}","State":"{{.State}}","Status":"{{.Status}}"}`,
-	)
+	wg.Wait()
+	return results
+}
 
-	out, err := cmd.Output()
+// FetchStatus queries docker ps for a single client (local or remote).
+func FetchStatus(c *registry.Client) ClientStatus {
+	var out string
+	var err error
+
+	format := `{"Names":"{{.Names}}","Status":"{{.Status}}","State":"{{.State}}"}`
+	cmd := fmt.Sprintf("docker ps -a --filter \"name=%s\" --format '%s'", c.ID, format)
+
+	if c.IsRemote {
+		orchestrator, errSSH := deploy.NewSSHOrchestrator(c.ServerHost, c.ServerUser, c.SSHPassword, c.SSHKeyPath)
+		if errSSH == nil {
+			out, err = orchestrator.RunCommand(cmd)
+			orchestrator.Close()
+		} else {
+			err = errSSH
+		}
+	} else {
+		deployer := deploy.NewDockerDeployer("") // workDir not needed for raw ps
+		statusMap, errLocal := deployer.Status(c.ID)
+		if errLocal == nil {
+			cs := ClientStatus{ClientID: c.ID, Containers: make(map[string]ContainerState)}
+			for name, s := range statusMap {
+				key := extractServiceKey(name, c.ID)
+				cs.Containers[key] = ContainerState{
+					ID:     name,
+					Status: s.Status,
+					State:  s.State,
+				}
+			}
+			return cs
+		}
+		err = errLocal
+	}
+
+	status := ClientStatus{
+		ClientID:   c.ID,
+		Containers: make(map[string]ContainerState),
+		Error:      err,
+	}
+
 	if err != nil {
-		cs.Error = fmt.Errorf("docker ps failed: %v", err)
-		return cs
+		return status
 	}
 
-	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	lines := strings.Split(strings.TrimSpace(out), "\n")
 	for _, line := range lines {
-		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
 
-		var entry dockerPsEntry
-		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+		var raw struct {
+			Names  string `json:"Names"`
+			Status string `json:"Status"`
+			State  string `json:"State"`
+		}
+
+		if err := json.Unmarshal([]byte(line), &raw); err != nil {
 			continue
 		}
 
-		// Normalize container name to service key
-		// Docker Compose names containers as: {service}_{clientID} or {clientID}-{service}-1
-		name := strings.TrimPrefix(entry.Names, "/")
-		serviceKey := extractServiceKey(name, clientID)
-
-		cs.Containers[serviceKey] = ContainerInfo{
-			Name:   name,
-			State:  entry.State,
-			Status: entry.Status,
+		serviceKey := extractServiceKey(raw.Names, c.ID)
+		status.Containers[serviceKey] = ContainerState{
+			ID:     raw.Names,
+			Status: raw.Status,
+			State:  raw.State,
 		}
 	}
 
-	return cs
+	return status
 }
 
-// FetchAllStatuses fetches Docker status for a slice of clientIDs concurrently.
-func FetchAllStatuses(clientIDs []string) map[string]ClientStatus {
-	result := make(map[string]ClientStatus)
-	ch := make(chan ClientStatus, len(clientIDs))
-
-	for _, id := range clientIDs {
-		go func(cid string) {
-			ch <- FetchClientStatus(cid)
-		}(id)
-	}
-
-	for range clientIDs {
-		cs := <-ch
-		result[cs.ClientID] = cs
-	}
-
-	return result
-}
-
-// extractServiceKey normalizes a full container name to a short service key.
-// e.g. "commercex_server_mystore" → "commercex-server"
-//
-//	"mystore-postgres_db-1"       → "postgres"
+// extractServiceKey normalizes container names.
 func extractServiceKey(containerName, clientID string) string {
-	// Remove clientID suffix/prefix variations
-	name := containerName
+	name := strings.TrimPrefix(containerName, "/")
 	name = strings.ReplaceAll(name, "_"+clientID, "")
 	name = strings.ReplaceAll(name, "-"+clientID, "")
 	name = strings.TrimPrefix(name, clientID+"_")
 	name = strings.TrimPrefix(name, clientID+"-")
+
 	// Remove compose trailing index (e.g. "-1")
 	if idx := strings.LastIndex(name, "-"); idx != -1 {
 		suffix := name[idx+1:]
@@ -166,7 +135,7 @@ func extractServiceKey(containerName, clientID string) string {
 			name = name[:idx]
 		}
 	}
-	// Normalize underscores to dashes
+
 	name = strings.ReplaceAll(name, "_", "-")
 	return strings.Trim(name, "-_")
 }
@@ -178,4 +147,72 @@ func isDigits(s string) bool {
 		}
 	}
 	return true
+}
+
+// ─── View Helpers ─────────────────────────────────────────────────────────────
+
+func (cs ClientStatus) AllRunning() bool {
+	services := []string{"commercex-server", "commercex-worker", "postgres", "storefront"}
+	for _, svc := range services {
+		c, ok := cs.Containers[svc]
+		if !ok || (c.State != "running" && c.State != "healthy") {
+			return false
+		}
+	}
+	return true
+}
+
+func (cs ClientStatus) AllStopped() bool {
+	if len(cs.Containers) == 0 {
+		return true
+	}
+	for _, c := range cs.Containers {
+		if c.State == "running" || c.State == "restarting" {
+			return false
+		}
+	}
+	return true
+}
+
+func (cs ClientStatus) HasBuilding() bool {
+	for _, c := range cs.Containers {
+		if c.State == "restarting" || c.State == "starting" {
+			return true
+		}
+	}
+	return false
+}
+
+func (cs ClientStatus) ServiceState(service string) string {
+	if c, ok := cs.Containers[service]; ok {
+		return c.State
+	}
+	// Fuzzy match
+	for name, c := range cs.Containers {
+		if strings.HasPrefix(name, service) {
+			return c.State
+		}
+	}
+	return "down"
+}
+
+func overallStatus(cs ClientStatus) string {
+	if len(cs.Containers) == 0 {
+		return "down"
+	}
+
+	running := 0
+	for _, c := range cs.Containers {
+		if c.State == "running" {
+			running++
+		}
+	}
+
+	if running == 0 {
+		return "exited"
+	}
+	if running < len(cs.Containers) {
+		return "partial"
+	}
+	return "running"
 }

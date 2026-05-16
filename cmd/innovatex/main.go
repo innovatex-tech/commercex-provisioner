@@ -279,99 +279,62 @@ func createCmd() *cobra.Command {
 	var clientID, domain, brandName string
 	var dbName, dbUsername, dbPassword string
 	var adminUsername, adminPassword string
+	var server, sshPass, sshKey string
 
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a new commerce client",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			reg := registry.NewStore(getRegistryPath())
-			scanner := bufio.NewScanner(os.Stdin)
-
-			fmt.Println("\n╔══════════════════════════════════════════════════════════╗")
-			fmt.Println("║                                                          ║")
-			fmt.Println("║      🚀  CommerceX Multi-Tenant Provisioner  🚀         ║")
-			fmt.Println("║                                                          ║")
-			fmt.Println("║    Create isolated e-commerce environments instantly    ║")
-			fmt.Println("║                                                          ║")
-			fmt.Println("╚══════════════════════════════════════════════════════════╝")
-			fmt.Println()
-
-			fmt.Println("📋 STEP 1/4: Client Information")
-			fmt.Println("─────────────────────────────────────────────────────────")
-
-			// Prompt for Client ID if not provided
-			if clientID == "" {
-				clientID = promptInput(scanner, "Client ID (lowercase, alphanumeric, dashes)", validateClientID)
-			}
-
-			// Prompt for Domain if not provided
-			if domain == "" {
-				fmt.Println()
-				fmt.Println("📡 Deployment Target")
-				fmt.Println("─────────────────────────────────────────────────────────")
-				fmt.Println("  💡 Tip:")
-				fmt.Println("     Local:      localhost  or  mystore.local")
-				fmt.Println("     Production: innovatex.dev  or  123.45.67.89")
-				fmt.Println()
-				domain = promptInput(scanner, "Domain or IP", validateDomain)
-			}
-
-			// Prompt for Brand Name if not provided
-			if brandName == "" {
-				brandName = promptInput(scanner, "Brand Name (e.g., My Store)", validateBrandName)
-			}
-
-			fmt.Println("\n📊 STEP 2/4: Database Configuration")
-			fmt.Println("─────────────────────────────────────────────────────────")
-
-			// Prompt for DB Name if not provided
-			if dbName == "" {
-				dbName = promptInput(scanner, "Database Name (alphanumeric, underscores)", validateDBName)
-			}
-
-			// Prompt for DB Username if not provided
-			if dbUsername == "" {
-				dbUsername = promptInputWithDefault(scanner, "Database Username", "vendure", validateDBUsername)
-			}
-
-			// Prompt for DB Password if not provided
-			if dbPassword == "" {
-				dbPassword = promptInput(scanner, "Database Password (min 6 characters)", validatePassword)
-			}
-
-			fmt.Println("\n👤 STEP 3/4: Admin Account")
-			fmt.Println("─────────────────────────────────────────────────────────")
-
-			// Prompt for Admin Username if not provided
-			if adminUsername == "" {
-				adminUsername = promptInput(scanner, "Admin Username (alphanumeric)", validateUsername)
-			}
-
-			// Prompt for Admin Password if not provided
-			if adminPassword == "" {
-				adminPassword = promptInput(scanner, "Admin Password (min 6 characters)", validatePassword)
-			}
-
-			fmt.Println("\n⚙️  STEP 4/4: Deployment")
-			fmt.Println("─────────────────────────────────────────────────────────")
-			fmt.Println("🔨 Building and deploying your commerce environment...")
-			fmt.Println()
-
 			dbProv := db.NewProvisioner(config.DBHost, config.DBPort, config.DBUser, config.DBPassword, config.AdminDB)
 			prov := core.NewProvisioner(config, reg, dbProv)
 
-			req := &core.CreateRequest{
-				ClientID:      clientID,
-				Domain:        domain,
-				BrandName:     brandName,
-				DBName:        dbName,
-				DBUsername:    dbUsername,
-				DBPassword:    dbPassword,
-				AdminUsername: adminUsername,
-				AdminPassword: adminPassword,
+			var req core.CreateRequest
+
+			// If flags are provided, use them. Otherwise launch Wizard.
+			if clientID != "" && domain != "" && brandName != "" {
+				var serverUser, serverHost string
+				if server != "" {
+					parts := strings.Split(server, "@")
+					if len(parts) == 2 {
+						serverUser, serverHost = parts[0], parts[1]
+					} else {
+						serverUser, serverHost = "root", server
+					}
+				}
+
+				req = core.CreateRequest{
+					ClientID:      clientID,
+					Domain:        domain,
+					BrandName:     brandName,
+					DBName:        dbName,
+					DBUsername:    dbUsername,
+					DBPassword:    dbPassword,
+					AdminUsername: adminUsername,
+					AdminPassword: adminPassword,
+					ServerHost:    serverHost,
+					ServerUser:    serverUser,
+					SSHPassword:   sshPass,
+					SSHKeyPath:    sshKey,
+				}
+			} else {
+				m := tui.NewWizard()
+				p := tea.NewProgram(m, tea.WithAltScreen())
+				finalModel, err := p.Run()
+				if err != nil {
+					return err
+				}
+				wizard := finalModel.(tui.WizardModel)
+				var confirmed bool
+				req, confirmed = wizard.GetRequest()
+				if !confirmed {
+					fmt.Println("\n❌ Creation cancelled.")
+					return nil
+				}
 			}
 
-			client, err := prov.Create(req)
+			fmt.Println("\n🚀  PROVISIONING STARTING...")
+			client, err := prov.Create(&req)
 			if err != nil {
 				return err
 			}
@@ -389,40 +352,33 @@ func createCmd() *cobra.Command {
 			fmt.Printf("│  Brand:        %-42s │\n", client.BrandName)
 			fmt.Printf("│  Database:     %-42s │\n", client.DBName)
 			fmt.Println("└──────────────────────────────────────────────────────────┘")
-			fmt.Println()
 
-			// Access URLs box
-			domainDisplay := client.Domain
-			if client.Domain == "localhost" || strings.HasSuffix(client.Domain, ".local") {
-				domainDisplay = "localhost"
+			// Access URLs
+			urlTarget := client.Domain
+			if client.IsRemote {
+				urlTarget = client.ServerHost
 			}
-			fmt.Println("┌─ 🌐 Access URLs ────────────────────────────────────────┐")
-			fmt.Printf("│  🛍️  Storefront:   http://%-29s │\n", fmt.Sprintf("%s:%d", domainDisplay, client.StorefrontPort))
-			fmt.Printf("│  🔧 CommerceX:     http://%-29s │\n", fmt.Sprintf("%s:%d", domainDisplay, client.AppPort))
-			fmt.Printf("│  🗄️  PostgreSQL:   %-38s │\n", fmt.Sprintf("%s:%d", domainDisplay, client.PostgresPort))
+
+			fmt.Println("\n┌─ 🌐 Access URLs ────────────────────────────────────────┐")
+			fmt.Printf("│  🛍️  Storefront:   http://%-29s │\n", fmt.Sprintf("%s:%d", urlTarget, client.StorefrontPort))
+			fmt.Printf("│  🔧 CommerceX:     http://%-29s │\n", fmt.Sprintf("%s:%d", urlTarget, client.AppPort))
+			fmt.Printf("│  🗄️  PostgreSQL:   %-38s │\n", fmt.Sprintf("%s:%d", urlTarget, client.PostgresPort))
 			fmt.Println("└──────────────────────────────────────────────────────────┘")
-			fmt.Println()
 
 			// Admin credentials box
-			fmt.Println("┌─ 🔐 Admin Credentials ──────────────────────────────────┐")
+			fmt.Println("\n┌─ 🔐 Admin Credentials ──────────────────────────────────┐")
 			fmt.Printf("│  Username:     %-42s │\n", client.AdminUsername)
 			fmt.Printf("│  Password:     %-42s │\n", client.AdminPassword)
 			fmt.Println("└──────────────────────────────────────────────────────────┘")
-			fmt.Println()
 
-			// Next steps
-			fmt.Println("💡 Next Steps:")
-			fmt.Printf("   1. Visit your storefront: http://%s:%d\n", domainDisplay, client.StorefrontPort)
-			fmt.Printf("   2. Access admin panel: http://%s:%d\n", domainDisplay, client.AppPort)
-			fmt.Println("   3. Check status: innovatex status --id=" + client.ID)
-			fmt.Println("   4. View logs: docker logs commercex_server_" + client.ID)
+			fmt.Println("\n💡 Next Step: Run 'innovatex dashboard' to manage your new client.")
 			fmt.Println()
 
 			return nil
 		},
 	}
 
-	// Optional flags (for non-interactive mode)
+	// Optional flags
 	cmd.Flags().StringVarP(&clientID, "id", "i", "", "Client ID")
 	cmd.Flags().StringVarP(&domain, "domain", "d", "", "Domain")
 	cmd.Flags().StringVarP(&brandName, "brand", "b", "", "Brand name")
@@ -431,6 +387,9 @@ func createCmd() *cobra.Command {
 	cmd.Flags().StringVar(&dbPassword, "db-password", "", "Database password")
 	cmd.Flags().StringVar(&adminUsername, "admin-user", "", "Admin username")
 	cmd.Flags().StringVar(&adminPassword, "admin-password", "", "Admin password")
+	cmd.Flags().StringVar(&server, "server", "", "Remote server (user@host)")
+	cmd.Flags().StringVar(&sshPass, "ssh-pass", "", "SSH password")
+	cmd.Flags().StringVar(&sshKey, "ssh-key", "", "SSH private key path")
 
 	return cmd
 }
@@ -572,6 +531,7 @@ func listCmd() *cobra.Command {
 
 func deleteCmd() *cobra.Command {
 	var clientID string
+	var purge bool
 
 	cmd := &cobra.Command{
 		Use:   "delete [id]",
@@ -590,16 +550,12 @@ func deleteCmd() *cobra.Command {
 			dbProv := db.NewProvisioner(config.DBHost, config.DBPort, config.DBUser, config.DBPassword, config.AdminDB)
 			prov := core.NewProvisioner(config, reg, dbProv)
 
-			if err := prov.Delete(clientID); err != nil {
-				return err
-			}
-
-			fmt.Printf("\n✓ Client %s deleted successfully\n\n", clientID)
-			return nil
+			return prov.Delete(clientID, purge)
 		},
 	}
 
 	cmd.Flags().StringVarP(&clientID, "id", "i", "", "Client ID")
+	cmd.Flags().BoolVar(&purge, "purge", false, "Remove all containers, files, and data (database)")
 
 	return cmd
 }

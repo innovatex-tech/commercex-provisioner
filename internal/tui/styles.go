@@ -166,6 +166,10 @@ var (
 			Foreground(colorMuted).
 			Italic(true).
 			Align(lipgloss.Center)
+
+	// Wizard specific
+	cursorStyle = lipgloss.NewStyle().Foreground(colorAccent)
+	helpStyle   = lipgloss.NewStyle().Foreground(colorTextDim)
 )
 
 // ─── Status Badge Helpers ─────────────────────────────────────────────────────
@@ -184,18 +188,4 @@ func statusBadge(status string) string {
 		}
 		return statusUnknownStyle.Render("○ " + status)
 	}
-}
-
-// overallStatus returns the aggregate status for a client based on its containers.
-func overallStatus(cs ClientStatus) string {
-	if cs.AllRunning() {
-		return "running"
-	}
-	if cs.AllStopped() {
-		return "stopped"
-	}
-	if cs.HasBuilding() {
-		return "building"
-	}
-	return "partial"
 }
