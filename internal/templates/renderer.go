@@ -1,9 +1,12 @@
 package templates
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"text/template"
+
+	"github.com/innovatex-tech/commercex-provisioner/templates"
 )
 
 type Renderer struct {
@@ -15,9 +18,21 @@ func NewRenderer(dir string) *Renderer {
 }
 
 func (r *Renderer) Render(templateName string, data interface{}, outputPath string) error {
-	tmplPath := filepath.Join(r.templateDir, templateName)
+	var tmpl *template.Template
+	var err error
 
-	tmpl, err := template.ParseFiles(tmplPath)
+	// 1. Try to load from external directory first (allows user customization)
+	tmplPath := filepath.Join(r.templateDir, templateName)
+	if _, err := os.Stat(tmplPath); err == nil {
+		tmpl, err = template.ParseFiles(tmplPath)
+	} else {
+		// 2. Fallback to embedded templates in the binary
+		tmpl, err = template.ParseFS(templates.FS, templateName)
+		if err != nil {
+			return fmt.Errorf("template %s not found in %s or binary: %v", templateName, r.templateDir, err)
+		}
+	}
+
 	if err != nil {
 		return err
 	}
