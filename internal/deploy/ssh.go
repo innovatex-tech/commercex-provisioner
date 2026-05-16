@@ -134,7 +134,7 @@ func (s *SSHOrchestrator) PushFiles(localDir, remotePath string) error {
 	defer session.Close()
 
 	// 1. Ensure remote path exists
-	_, err = s.RunCommand(fmt.Sprintf("mkdir -p %s", remotePath))
+	_, err = s.RunCommand(fmt.Sprintf("mkdir -p '%s'", remotePath))
 	if err != nil {
 		return fmt.Errorf("failed to create remote directory: %v", err)
 	}
@@ -148,7 +148,7 @@ func (s *SSHOrchestrator) PushFiles(localDir, remotePath string) error {
 	var stderr bytes.Buffer
 	session.Stderr = &stderr
 
-	err = session.Start(fmt.Sprintf("tar -xz -C %s", remotePath))
+	err = session.Start(fmt.Sprintf("tar -xz -C '%s'", remotePath))
 	if err != nil {
 		return fmt.Errorf("failed to start remote tar: %v (%s)", err, stderr.String())
 	}
@@ -220,7 +220,7 @@ func (s *SSHOrchestrator) tarDir(src string, w io.WriteCloser) error {
 // DeployRemote runs docker compose up on the remote server.
 func (s *SSHOrchestrator) DeployRemote(remotePath string) error {
 	// Use 'docker compose' or fallback to 'docker-compose'
-	cmd := fmt.Sprintf("cd %s && docker compose up -d --build || docker-compose up -d --build", remotePath)
+	cmd := fmt.Sprintf("cd '%s' && (docker compose up -d --build || docker-compose up -d --build)", remotePath)
 	out, err := s.RunCommand(cmd)
 	if err != nil {
 		return fmt.Errorf("remote deploy failed: %v\nOutput: %s", err, out)

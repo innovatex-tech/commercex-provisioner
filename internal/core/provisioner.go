@@ -271,10 +271,27 @@ func (p *Provisioner) Delete(clientID string, purge bool) error {
 }
 
 func (p *Provisioner) validate(req *CreateRequest) error {
-	existing, _ := p.registry.Get(req.ClientID)
-	if existing != nil {
-		return fmt.Errorf("client %s already exists", req.ClientID)
+	// Check for spaces in ID
+	if strings.Contains(req.ClientID, " ") {
+		return fmt.Errorf("client ID cannot contain spaces (use-dashes-instead)")
 	}
+
+	clients, err := p.registry.List()
+	if err != nil {
+		return fmt.Errorf("failed to read registry: %v", err)
+	}
+
+	for _, c := range clients {
+		// Check for ID collision
+		if c.ID == req.ClientID {
+			return fmt.Errorf("client with ID '%s' already exists", req.ClientID)
+		}
+		// Check for Domain collision
+		if c.Domain == req.Domain && req.Domain != "localhost" {
+			return fmt.Errorf("domain '%s' is already assigned to client '%s'", req.Domain, c.ID)
+		}
+	}
+
 	return nil
 }
 
