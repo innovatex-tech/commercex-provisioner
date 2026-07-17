@@ -1,8 +1,10 @@
 package tui
 
-import "github.com/charmbracelet/bubbles/key"
+import (
+	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/lipgloss"
+)
 
-// keyMap defines all keyboard shortcuts used in the dashboard.
 type keyMap struct {
 	Up       key.Binding
 	Down     key.Binding
@@ -21,7 +23,6 @@ type keyMap struct {
 	PageDown key.Binding
 }
 
-// keys is the global keybinding set.
 var keys = keyMap{
 	Up: key.NewBinding(
 		key.WithKeys("up", "k"),
@@ -61,11 +62,11 @@ var keys = keyMap{
 	),
 	Confirm: key.NewBinding(
 		key.WithKeys("y", "Y"),
-		key.WithHelp("y", "confirm"),
+		key.WithHelp("y", "yes"),
 	),
 	Cancel: key.NewBinding(
 		key.WithKeys("n", "N", "esc"),
-		key.WithHelp("n/esc", "cancel"),
+		key.WithHelp("n", "cancel"),
 	),
 	PageUp: key.NewBinding(
 		key.WithKeys("pgup", "ctrl+u"),
@@ -77,34 +78,31 @@ var keys = keyMap{
 	),
 }
 
-// ─── Footer Help Text ─────────────────────────────────────────────────────────
-
-// helpString returns a formatted footer help bar string.
 func helpString(view viewType, hasSelected bool) string {
-	type helpItem struct{ key, desc string }
+	type keybind struct{ key, desc string }
 
-	var items []helpItem
+	var bindings []keybind
 
 	switch view {
 	case listView:
-		items = []helpItem{
-			{"↑↓/jk", "navigate"},
+		bindings = []keybind{
+			{"j/k", "navigate"},
 			{"enter", "details"},
 		}
 		if hasSelected {
-			items = append(items,
-				helpItem{"s", "start/stop"},
-				helpItem{"l", "logs"},
-				helpItem{"d", "delete"},
+			bindings = append(bindings,
+				keybind{"s", "start/stop"},
+				keybind{"l", "logs"},
+				keybind{"d", "delete"},
 			)
 		}
-		items = append(items,
-			helpItem{"r", "refresh"},
-			helpItem{"q", "quit"},
+		bindings = append(bindings,
+			keybind{"r", "refresh"},
+			keybind{"q", "quit"},
 		)
 
 	case detailView:
-		items = []helpItem{
+		bindings = []keybind{
 			{"esc", "back"},
 			{"s", "start/stop"},
 			{"l", "logs"},
@@ -114,33 +112,22 @@ func helpString(view viewType, hasSelected bool) string {
 		}
 
 	case logsView:
-		items = []helpItem{
-			{"↑↓/pgup/pgdn", "scroll"},
+		bindings = []keybind{
+			{"j/k", "scroll"},
 			{"esc", "back"},
 			{"q", "quit"},
 		}
 
 	case confirmView:
-		items = []helpItem{
-			{"y", "confirm"},
-			{"n/esc", "cancel"},
+		bindings = []keybind{
+			{"y", "yes"},
+			{"n", "cancel"},
 		}
 	}
 
 	var parts []string
-	for _, item := range items {
-		k := footerKeyStyle.Render("[" + item.key + "]")
-		d := footerDescStyle.Render(" " + item.desc)
-		parts = append(parts, k+d)
+	for _, b := range bindings {
+		parts = append(parts, footerKeybindStyle.Render("["+b.key+"]"+b.desc))
 	}
-
-	sep := footerDescStyle.Render("  ")
-	result := sep
-	for i, p := range parts {
-		result += p
-		if i < len(parts)-1 {
-			result += footerDescStyle.Render("  ·  ")
-		}
-	}
-	return result
+	return lipgloss.JoinHorizontal(lipgloss.Top, parts...)
 }
