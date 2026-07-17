@@ -1,192 +1,180 @@
 package tui
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"fmt"
 
-// ─── Palette ─────────────────────────────────────────────────────────────────
-
-const (
-	colorPrimary   = lipgloss.Color("#7C3AED") // violet-600
-	colorAccent    = lipgloss.Color("#A78BFA") // violet-400
-	colorSuccess   = lipgloss.Color("#22C55E") // green-500
-	colorWarning   = lipgloss.Color("#F59E0B") // amber-500
-	colorDanger    = lipgloss.Color("#EF4444") // red-500
-	colorMuted     = lipgloss.Color("#6B7280") // gray-500
-	colorSubtle    = lipgloss.Color("#374151") // gray-700
-	colorBg        = lipgloss.Color("#111827") // gray-900
-	colorSurface   = lipgloss.Color("#1F2937") // gray-800
-	colorBorder    = lipgloss.Color("#374151") // gray-700
-	colorText      = lipgloss.Color("#F9FAFB") // gray-50
-	colorTextDim   = lipgloss.Color("#9CA3AF") // gray-400
+	"github.com/charmbracelet/lipgloss"
 )
 
-// ─── Base Styles ─────────────────────────────────────────────────────────────
+// ─── Semantic Color Slots ─────────────────────────────────────────────────────
+// Base16-inspired: 8 monotones + accent slots.
+// Map by function, never by appearance. Terminal theme controls the rest.
+
+const (
+	// Backgrounds (dark, warm)
+	bgBase     = lipgloss.Color("#0D1117") // near-black
+	bgSurface  = lipgloss.Color("#161B22") // elevated panels
+	bgOverlay  = lipgloss.Color("#1C2128") // highest layer
+
+	// Foreground text (warm grays — NOT saturated, Gemini-style)
+	fgMuted    = lipgloss.Color("#6E7681") // dimmest — timestamps, hints
+	fgDefault  = lipgloss.Color("#9198A1") // body text — easy on eyes
+	fgMid      = lipgloss.Color("#C9D1D9") // emphasis — headings, labels
+	fgBright   = lipgloss.Color("#E6EDF3") // brightest — active selection
+	fgPure     = lipgloss.Color("#F0F6FC") // white — only for pure highlights
+
+	// Accent (teal — used sparingly for focus, links, borders)
+	accentPrimary = lipgloss.Color("#3FBAA0") // teal — focus ring, links
+	accentDim     = lipgloss.Color("#2D8B78") // darker teal — selected bg
+
+	// Status (semantic, low-saturation for eye comfort)
+	statusOK    = lipgloss.Color("#3FB950") // green — running
+	statusWarn  = lipgloss.Color("#D29922") // amber — building, partial
+	statusErr   = lipgloss.Color("#F85149") // red — stopped, error
+	statusInfo  = lipgloss.Color("#58A6FF") // blue — info
+	statusMuted = lipgloss.Color("#6E7681") // gray — unknown
+
+	// Borders (subtle)
+	borderDefault = lipgloss.Color("#30363D") // very subtle
+	borderFocus   = lipgloss.Color("#3FBAA0") // teal accent
+	borderDanger  = lipgloss.Color("#F85149") // red
+)
+
+// ─── Layout Constants ─────────────────────────────────────────────────────────
+
+const (
+	minWidth  = 80
+	minHeight = 24
+)
+
+// ─── Separator ────────────────────────────────────────────────────────────────
+
+func hLine(w int) string {
+	return lipgloss.NewStyle().
+		Foreground(borderDefault).
+		Width(w).
+		Render("─")
+}
+
+func hLineFocus(w int) string {
+	return lipgloss.NewStyle().
+		Foreground(borderFocus).
+		Width(w).
+		Render("─")
+}
+
+// ─── Header ───────────────────────────────────────────────────────────────────
 
 var (
-	// App chrome
-	appStyle = lipgloss.NewStyle().
-			Background(colorBg)
-
-	// Header bar
 	headerStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(colorText).
-			Background(colorPrimary).
-			Padding(0, 2)
-
-	headerTitleStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(colorText)
+			Foreground(fgBright).
+			Background(bgBase).
+			Padding(0, 1)
 
 	headerVersionStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#DDD6FE")).
-				Faint(true)
+				Foreground(fgMuted)
+)
 
-	// Footer / help bar
+// ─── Footer ───────────────────────────────────────────────────────────────────
+
+var (
 	footerStyle = lipgloss.NewStyle().
-			Foreground(colorTextDim).
-			Background(colorSurface).
-			Padding(0, 2)
+			Foreground(fgMuted).
+			Background(bgSurface).
+			Padding(0, 1)
 
-	footerKeyStyle = lipgloss.NewStyle().
-			Foreground(colorAccent).
-			Bold(true)
+	footerKeybindStyle = lipgloss.NewStyle().
+				Foreground(accentPrimary).
+				MarginRight(1)
+)
 
-	footerDescStyle = lipgloss.NewStyle().
-			Foreground(colorTextDim)
+// ─── Panels ───────────────────────────────────────────────────────────────────
 
-	// Section panels
+var (
 	panelStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(colorBorder).
-			Background(colorSurface).
+			BorderForeground(borderDefault).
+			Background(bgSurface).
 			Padding(0, 1)
 
 	panelFocusedStyle = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
-				BorderForeground(colorPrimary).
-				Background(colorSurface).
+				BorderForeground(borderFocus).
+				Background(bgSurface).
 				Padding(0, 1)
 
 	panelTitleStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(colorAccent).
-			MarginBottom(1)
+			Foreground(accentPrimary).
+			Padding(0, 1)
+)
 
-	// Detail panel fields
+// ─── Detail Fields ────────────────────────────────────────────────────────────
+
+var (
 	fieldLabelStyle = lipgloss.NewStyle().
-			Foreground(colorTextDim).
+			Foreground(fgMuted).
 			Width(14)
 
 	fieldValueStyle = lipgloss.NewStyle().
-			Foreground(colorText)
+			Foreground(fgMid)
 
 	fieldURLStyle = lipgloss.NewStyle().
-			Foreground(colorAccent).
+			Foreground(accentPrimary).
 			Underline(true)
 
-	// Table header
-	tableHeaderStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(colorAccent).
-				BorderStyle(lipgloss.NormalBorder()).
-				BorderBottom(true).
-				BorderForeground(colorBorder)
+	sectionHeaderStyle = lipgloss.NewStyle().
+				Foreground(accentDim).
+				Bold(true)
 
-	// Table selected row
-	tableSelectedStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(colorText).
-				Background(colorPrimary)
-
-	// Status badges
-	statusRunningStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(colorSuccess)
-
-	statusStoppedStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(colorDanger)
-
-	statusBuildingStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(colorWarning)
-
-	statusUnknownStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(colorMuted)
-
-	// Confirm dialog
-	dialogStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(colorDanger).
-			Background(colorSurface).
-			Padding(1, 3).
-			Align(lipgloss.Center)
-
-	dialogTitleStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(colorDanger).
-				MarginBottom(1)
-
-	// Logs view
-	logsHeaderStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(colorAccent).
-			Background(colorSurface).
-			Padding(0, 1)
-
-	logsStyle = lipgloss.NewStyle().
-			Foreground(colorTextDim).
-			Background(colorBg)
-
-	// Notification / flash message
-	notifySuccessStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(colorSuccess).
-				Background(colorSurface).
-				Padding(0, 2)
-
-	notifyErrorStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(colorDanger).
-				Background(colorSurface).
-				Padding(0, 2)
-
-	notifyInfoStyle = lipgloss.NewStyle().
-			Foreground(colorTextDim).
-			Background(colorSurface).
-			Padding(0, 2)
-
-	// Spinner
-	spinnerStyle = lipgloss.NewStyle().
-			Foreground(colorPrimary)
-
-	// Empty state
-	emptyStyle = lipgloss.NewStyle().
-			Foreground(colorMuted).
-			Italic(true).
-			Align(lipgloss.Center)
+	containerLabelStyle = lipgloss.NewStyle().
+				Foreground(fgDefault).
+				Width(16)
 )
 
-// ─── Status Badge Helpers ─────────────────────────────────────────────────────
+// ─── Table ────────────────────────────────────────────────────────────────────
+
+var (
+	tableHeaderStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(fgBright).
+				BorderStyle(lipgloss.NormalBorder()).
+				BorderBottom(true).
+				BorderForeground(borderDefault)
+
+	tableSelectedStyle = lipgloss.NewStyle().
+				Foreground(fgPure).
+				Background(accentDim)
+)
+
+// ─── Status Badges ────────────────────────────────────────────────────────────
+
+var (
+	statusOKStyle    = lipgloss.NewStyle().Foreground(statusOK)
+	statusErrStyle   = lipgloss.NewStyle().Foreground(statusErr)
+	statusWarnStyle  = lipgloss.NewStyle().Foreground(statusWarn)
+	statusMutedStyle = lipgloss.NewStyle().Foreground(statusMuted)
+)
 
 func statusBadge(status string) string {
 	switch status {
 	case "running", "healthy":
-		return statusRunningStyle.Render("● " + status)
-	case "exited", "dead", "not found":
-		return statusStoppedStyle.Render("● " + status)
+		return statusOKStyle.Render("● running")
+	case "exited", "dead":
+		return statusErrStyle.Render("● stopped")
+	case "not found":
+		return statusMutedStyle.Render("○ not found")
 	case "restarting", "starting", "building":
-		return statusBuildingStyle.Render("◐ " + status)
+		return statusWarnStyle.Render("◐ building")
 	default:
 		if status == "" {
-			return statusUnknownStyle.Render("○ unknown")
+			return statusMutedStyle.Render("○ unknown")
 		}
-		return statusUnknownStyle.Render("○ " + status)
+		return statusMutedStyle.Render("○ " + status)
 	}
 }
 
-// overallStatus returns the aggregate status for a client based on its containers.
 func overallStatus(cs ClientStatus) string {
 	if cs.AllRunning() {
 		return "running"
@@ -198,4 +186,98 @@ func overallStatus(cs ClientStatus) string {
 		return "building"
 	}
 	return "partial"
+}
+
+func overallStatusBadge(cs ClientStatus) string {
+	switch overallStatus(cs) {
+	case "running":
+		return statusOKStyle.Render("● running")
+	case "stopped":
+		return statusErrStyle.Render("● stopped")
+	case "building":
+		return statusWarnStyle.Render("◐ building")
+	case "partial":
+		return statusWarnStyle.Render("◐ partial")
+	default:
+		return statusMutedStyle.Render("○ unknown")
+	}
+}
+
+// ─── Dialog ───────────────────────────────────────────────────────────────────
+
+var (
+	dialogStyle = lipgloss.NewStyle().
+			Border(lipgloss.DoubleBorder()).
+			BorderForeground(borderDanger).
+			Background(bgSurface).
+			Padding(1, 3).
+			Width(50).
+			Align(lipgloss.Center)
+
+	dialogTitleStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(statusErr).
+				MarginBottom(1)
+)
+
+// ─── Logs ─────────────────────────────────────────────────────────────────────
+
+var (
+	logsHeaderStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(fgBright).
+			Background(bgSurface).
+			Padding(0, 1)
+
+	logsStyle = lipgloss.NewStyle().
+			Foreground(fgDefault).
+			Background(bgBase)
+)
+
+// ─── Status Bar (replaces notification bar) ───────────────────────────────────
+
+var (
+	statusBarStyle = lipgloss.NewStyle().
+			Foreground(fgMuted).
+			Background(bgSurface).
+			Padding(0, 1)
+
+	statusBarOKStyle = lipgloss.NewStyle().
+				Foreground(statusOK).
+				Background(bgSurface).
+				Padding(0, 1)
+
+	statusBarErrStyle = lipgloss.NewStyle().
+				Foreground(statusErr).
+				Background(bgSurface).
+				Padding(0, 1)
+)
+
+// ─── Misc ─────────────────────────────────────────────────────────────────────
+
+var (
+	spinnerStyle = lipgloss.NewStyle().
+			Foreground(accentPrimary)
+
+	emptyStyle = lipgloss.NewStyle().
+			Foreground(fgMuted).
+			Italic(true).
+			Align(lipgloss.Center)
+)
+
+// ─── Too-Small Gate ───────────────────────────────────────────────────────────
+
+func tooSmallMessage(w, h int) string {
+	msg := fmt.Sprintf("Terminal too small\n\nNeed 80x24 minimum\nCurrent: %dx%d", w, h)
+	content := lipgloss.NewStyle().
+		Foreground(fgMuted).
+		Align(lipgloss.Center).
+		Width(w).
+		Render(msg)
+	// Vertically center by padding top
+	lines := (h - 4) / 2
+	if lines < 0 {
+		lines = 0
+	}
+	return content
 }
