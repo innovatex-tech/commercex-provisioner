@@ -118,8 +118,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}:
 		m.clients = msg.clients
 		m.syncCursor()
-		if len(msg.ids) > 0 {
-			cmds = append(cmds, refreshStatusCmd(msg.ids))
+		if len(msg.clients) > 0 {
+			cmds = append(cmds, refreshStatusCmd(msg.clients))
 		}
 		return m, tea.Batch(cmds...)
 
@@ -158,9 +158,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.selected = nil
 			}
 		}
-		ids := m.clientIDs()
-		if len(ids) > 0 {
-			cmds = append(cmds, refreshStatusCmd(ids))
+		if len(m.clients) > 0 {
+			cmds = append(cmds, refreshStatusCmd(m.clients))
 		}
 		return m, tea.Batch(cmds...)
 
@@ -249,7 +248,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 		case key.Matches(msg, keys.Refresh):
 			m.loading = true
-			cmds = append(cmds, refreshStatusCmd(m.clientIDs()))
+			cmds = append(cmds, refreshStatusCmd(m.clients))
 		}
 
 	case detailView:
@@ -312,7 +311,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				case confirmDelete:
 					m.loading = true
 					m.activeView = listView
-					cmds = append(cmds, deleteClientCmd(m.workDir, m.selected.ID))
+					cmds = append(cmds, deleteClientCmd(m.workDir, m.selected))
 					m.reg.Delete(m.selected.ID)
 				case confirmStop:
 					m.loading = true

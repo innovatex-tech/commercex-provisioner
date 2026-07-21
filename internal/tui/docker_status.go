@@ -195,24 +195,3 @@ func (cs ClientStatus) ServiceState(service string) string {
 	}
 	return "down"
 }
-
-func overallStatus(cs ClientStatus) string {
-	if len(cs.Containers) == 0 {
-		return "down"
-	}
-
-	running := 0
-	for _, c := range cs.Containers {
-		if c.State == "running" {
-			running++
-		}
-	}
-
-	if running == 0 {
-		return "exited"
-	}
-	if running < len(cs.Containers) {
-		return "partial"
-	}
-	return "running"
-}

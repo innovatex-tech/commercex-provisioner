@@ -265,6 +265,49 @@ var (
 			Align(lipgloss.Center)
 )
 
+// ─── Legacy Aliases (wizard/provisioning from main) ───────────────────────────
+
+const (
+	progressBarWidth = 60
+
+	colorAccent   = accentPrimary
+	colorPrimary  = accentDim
+	colorSuccess  = statusOK
+	colorDanger   = statusErr
+	colorWarning  = statusWarn
+	colorMuted    = fgMuted
+	progressFull  = accentPrimary
+	progressEmpty = borderDefault
+)
+
+var (
+	boldStyle = lipgloss.NewStyle().Bold(true)
+	dimStyle  = lipgloss.NewStyle().Foreground(fgMuted)
+
+	notifyErrorStyle = lipgloss.NewStyle().
+				Foreground(statusErr).
+				Bold(true).
+				Padding(0, 1)
+
+	cursorStyle = lipgloss.NewStyle().Foreground(accentPrimary)
+	stepIndicatorStyle = lipgloss.NewStyle().
+				Foreground(accentPrimary).
+				Bold(true).
+				MarginRight(1)
+	labelStyle = lipgloss.NewStyle().
+			Foreground(accentPrimary).
+			Bold(true).
+			MarginRight(1)
+	containerStyle = lipgloss.NewStyle().
+			PaddingLeft(2).
+			Border(lipgloss.NormalBorder(), false, false, false, true).
+			BorderForeground(bgSurface)
+	stepTextStyle = lipgloss.NewStyle().
+			Foreground(fgMid).
+			Italic(true).
+			MarginBottom(1)
+)
+
 // ─── Too-Small Gate ───────────────────────────────────────────────────────────
 
 func tooSmallMessage(w, h int) string {

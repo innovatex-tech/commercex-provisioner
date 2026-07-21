@@ -474,7 +474,7 @@ func createCmd(formatFlag *string) *cobra.Command {
 				DBPassword:    dbPassword,
 				AdminUsername: adminUsername,
 				AdminPassword: adminPassword,
-			})
+			}, nil)
 			if err != nil {
 				return errf("runtime_error", err.Error(), true)
 			}
